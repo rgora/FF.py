@@ -39,7 +39,7 @@ Options:
 #     675 Mass Ave, Cambridge, MA 02139, USA.
 
 __author__  = "Robert Gora (robert.gora@pwr.wroc.pl)"
-__version__ = "$Revision: 0.4 $"
+__version__ = filter(str.isdigit, "$Revision$")
 
 from numpy import *
 from string import Template
