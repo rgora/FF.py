@@ -41,10 +41,11 @@ Options:
 __author__  = "Robert Gora (robert.gora@pwr.wroc.pl)"
 __version__ = filter(str.isdigit, "$Revision$")
 
-from numpy import *
-from string import Template
-
+# Import necessary modules
 import os, sys, getopt, re
+
+from string import Template
+from numpy import *
 
 # Regular expressions
 reflags = re.DOTALL
@@ -57,12 +58,12 @@ def usage():
     print __doc__
     print "Machine epsilon is: ",finfo(float64).eps,"for float64 type\n"
 
-
 #----------------------------------------------------------------------------
 # Main
 #----------------------------------------------------------------------------
-def Main(argv):
+def main(argv):
     '''Parse commandline and loop throught the logs'''
+
 
     Data = {}
 
@@ -118,8 +119,9 @@ def Main(argv):
         elif opt in ("--ff25"):
             ff25=1
 
-    DataFiles = args
     # Parse each data file/dir
+    DataFiles = args
+
     for f in DataFiles:
 
         # Analyze outputs
@@ -184,12 +186,26 @@ class Parser:
         pass
 
     def calculate(self):
-        for e in self.energies.keys():
-            self.properties['en'][e]={}
-            CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
-        for d in self.dipoles.keys():
-            self.properties['dm'][d]={}
-            CalcKurtzD(self.dipoles[d], self.fstep, self.units, self.properties['dm'][d], d)
+        if self.runtyp == 'eds':
+            for e in self.energies.keys():
+                self.properties['en'][e]={}
+                for i in self.energies[e].keys():
+                    self.properties['en'][e][i]={}
+                    label = e + " C(" + i + ")"
+                    CalcKurtzE(self.energies[e][i], self.fstep, self.units, self.properties['en'][e][i], label)
+            for d in self.dipoles.keys():
+                self.properties['dm'][d]={}
+                for i in self.dipoles[d].keys():
+                    self.properties['dm'][d][i]={}
+                    label = d + " C(" + i + ")"
+                    CalcKurtzD(self.dipoles[d][i], self.fstep, self.units, self.properties['dm'][d][i], label)
+        else:
+            for e in self.energies.keys():
+                self.properties['en'][e]={}
+                CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
+            for d in self.dipoles.keys():
+                self.properties['dm'][d]={}
+                CalcKurtzD(self.dipoles[d], self.fstep, self.units, self.properties['dm'][d], d)
 
     def sortfields(self):
 
@@ -318,9 +334,9 @@ class GAMESS(Parser):
         # Molcas conversion factor
         self.au2d=2.541766
 
-        # Read control options
-        try:
-            line = FindLine(self.File,'$CONTRL OPTIONS')
+        if FindLine(self.File,'$CONTRL OPTIONS') !=-1:
+
+            # Read control options
             line = SkipLines(self.File,2)
             self.scftyp = re.split('\s+|=',line)[2].lower()
             self.runtyp = re.split('\s+|=',line)[4].lower()
@@ -331,25 +347,40 @@ class GAMESS(Parser):
                 line = FindLine(self.File,'MP2 CONTROL INFORMATION')
                 line = SkipLines(self.File,5)
                 self.mp2prp = re.split('\s+|=',line)[4].lower()
-            
-            if self.runtyp == 'eds':
-                self.parse_eds()
-            else:
-                self.parse_gms()
-        except:
-            print "Unexpected error:", sys.exc_info()[0]
-            raise
-            print "File: ", filename, " is not a Gamess US file"
+
+            # Try parsing this file
+            try:
+
+                if self.runtyp == 'eds':
+                    term_ok = self.parse_eds()
+                else:
+                    term_ok = self.parse_gms()
+
+                if not term_ok:
+                    print "Warning: file ", filename, " did not finished properly!"
+
+            except:
+                print "Unexpected error:", sys.exc_info()[0]
+                raise
+
+        else:
+            print "File: ", filename, " is probably not a Gamess US file"
 
     def parse_gms(self):
         """Read gamess(us) energies for this system."""
 
         File = self.File
+        termination_code = False
 
         # Find field, energies and dipoles
         while 1:
             line = File.readline()
-            if line == '': break
+
+            if line.find('EXECUTION OF GAMESS TERMINATED NORMALLY') !=-1:
+                termination_code = True
+                break
+            if line == '':
+                break
     
             # Case of FF calculations
             if line.find('APPLIED FIELD') !=-1:
@@ -414,59 +445,89 @@ class GAMESS(Parser):
                         line = SkipLines(File,6)
                         self.dipoles['MP2'][Field] = array(line.split()[:3],dtype=float64)/self.au2d
 
+        return termination_code
+
+    def SaveEnergy(self,Label,ConfId,ConfNo,Field,Value):
+        if Label not in self.energies:
+            self.energies[Label]={}
+        if ConfId not in self.energies[Label]:
+            self.energies[Label][ConfId]={}
+        if Field not in self.energies[Label][ConfId]:
+            self.energies[Label][ConfId][Field]=Value
+
+    def SaveDipole(self,Label,ConfId,ConfNo,Field,Value):
+        if Label not in self.dipoles:
+            self.dipoles[Label]={}
+        if ConfId not in self.dipoles[Label]:
+            self.dipoles[Label][ConfId]={}
+        if Field not in self.dipoles[Label][ConfId]:
+            self.dipoles[Label][ConfId][Field]=Value
+
     def parse_eds(self):
         """Read gamess(us) eds energies for this system."""
 
         File = self.File
+        termination_code = False
 
         # Check onefld value
-        line = FindLine('FFCALC INPUT OPTIONS') !=-1
+        line = FindLine(File,'FFCALC INPUT OPTIONS')
         line = SkipLines(File,4)
-        onefld = re.split('\s+|=',line)[2].lower()
+        onefld = re.split('\s*=\s*|\s*',line)[2].lower()
 
         if onefld == 't':
+
+            # Case of single field calculations
+            line = FindLine(File,'APPLIED FIELD')
+            if line !=-1:
+                l = line.split()
+                # ... set field label ...
+                Field = ( round(float(l[-3]),4), round(float(l[-2]),4), round(float(l[-1]),4) )
+                # ... set base field ...
+                if ( (self.fstep == 0 and abs(Field[0]) > 0) or
+                     (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
+                    self.fstep = abs(Field[0])
+            else:
+                return termination_code
 
             # Find field, interaction energies and total energies and dipoles
             while 1:
                 line = File.readline()
-                if line == '': break
+
+                if line == '':
+                    break
+                if line.find('GAMESS TERMINATED NORMALLY') !=-1:
+                    termination_code = True
+                    break
             
-                # Case of single field calculations
-                if line.find('APPLIED FIELD') !=-1:
-                    line = line.split()
-                    # ... set field label ...
-                    Field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
-                    # ... set base field ...
-                    if ( (self.fstep == 0 and abs(Field[0]) > 0) or
-                         (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
-                        self.fstep = abs(Field[0])
+                if line.find('MONOMER:') !=-1:
+                    line = SkipLines(File,2)
+                    ConfNo = re.split('\D+',line)[1]
+                    ConfId = ''.join(re.split('\D+',line)[2:-1])
+
                     # ... read scf energy ...
                     line = FindLine(File,'SCF CALCULATION')
-                    if 'SCF' not in self.energies:
-                        self.energies['SCF']={}
-                    if 'SCF' not in self.dipoles:
-                        self.dipoles['SCF']={}
-                    if Field not in self.energies['SCF']:
-                        self.energies['SCF'][Field]= float64(FindLine(File,' FINAL ').split()[4])
+                    Vale = float64(FindLine(File,' FINAL ').split()[4])
+                    self.SaveEnergy('SCF',ConfId,ConfNo,Field,Vale)
+
                     # ... read scf dipole ...
-                    if Field not in self.dipoles['SCF']:
-                        line = FindLine(File,'ELECTROSTATIC MOMENTS')
-                        line = SkipLines(File,6)
-                        self.dipoles['SCF'][Field] = array(line.split()[:3],dtype=float64)/self.au2d
-                    # ... read scf energy ...
-                    if self.mplevl == 2:
-                        if 'MP2' not in self.energies:
-                            self.energies['MP2']={}
-                        if Field not in self.energies['MP2']:
-                            self.energies['MP2'][Field]= float64(FindLine(File,'E(MP2)=').split()[-1])
-                    if self.mplevl == 2 and self.mp2prp == 't':
-                        if 'MP2' not in self.dipoles:
-                            self.dipoles['MP2']={}
-                        if Field not in self.dipoles['MP2']:
-                            line = FindLine(File,'MP2 PROPERTIES')
-                            line = FindLine(File,'ELECTROSTATIC MOMENTS')
-                            line = SkipLines(File,6)
-                            self.dipoles['MP2'][Field] = array(line.split()[:3],dtype=float64)/self.au2d
+                    line = FindLine(File,'ELECTROSTATIC MOMENTS')
+                    line = SkipLines(File,6)
+                    Vald = array(line.split()[:3],dtype=float64)/self.au2d
+                    self.SaveDipole('SCF',ConfId,ConfNo,Field,Vald)
+
+                   ## ... read mp2 energy ...
+                   #if self.mplevl == 2:
+                   #    line = FindLine(File,'E(MP2)=')
+                   #    Vale = float64(line.split()[-1])
+                   #    self.SaveEnergy('MP2',ConfId,ConfNo,Field,Vale)
+                   #if self.mplevl == 2 and self.mp2prp == 't':
+                   #    line = FindLine(File,'MP2 PROPERTIES')
+                   #    line = FindLine(File,'ELECTROSTATIC MOMENTS')
+                   #    line = SkipLines(File,6)
+                   #    Vald = array(line.split()[:3],dtype=float64)/self.au2d
+                   #    self.SaveDipole('MP2',ConfId,ConfNo,Field,Vald)
+
+        return termination_code
 
 #----------------------------------------------------------------------------
 # Molcas routines
@@ -1165,11 +1226,13 @@ def CalcKurtzD(D, f, U, Properties, Label):
     By = (3.0/5.0)*B.sum(axis=0)[1]
     Bz = (3.0/5.0)*B.sum(axis=0)[2]
     # projection to the dipole moment vector
+    Bm = (3.0/5.0)*dot(M,B.sum(axis=0))/Mv
 
     Properties['B']=B
     Properties['Bx']=Bx
     Properties['By']=By
     Properties['Bz']=Bz
+    Properties['Bm']=Bm
 
     # second hyperpolarizability
     xxxx=Gamma_D(0,0,D,f)
@@ -1210,12 +1273,10 @@ def CalcKurtzD(D, f, U, Properties, Label):
     log += line % ( zx, zy, zz )
 
     log += 'First Hyperpolarizability [%s]\n\n' % U['u']
+    line = 4*U['b']['f'] + '\n\n'
+    log += '%15s %15s %15s %15s\n' % ( 'xxx'.rjust(15), 'yxx'.rjust(15), 'zxx'.rjust(15), '<beta_mu>'.rjust(15) )
+    log += line % ( xxx, yxx, zxx, Bm )
     line = 3*U['b']['f'] + '\n\n'
-    B = array([xxx,yxx,zxx,
-               xyy,yyy,zyy,
-               xzz,yzz,zzz],dtype=float64).reshape(3,3)
-    log += '%15s %15s %15s\n' % ( 'xxx'.rjust(15), 'yxx'.rjust(15), 'zxx'.rjust(15) )
-    log += line % ( xxx, yxx, zxx )
     log += '%15s %15s %15s\n' % ( 'xyy'.rjust(15), 'yyy'.rjust(15), 'zyy'.rjust(15) )
     log += line % ( xyy, yyy, zyy )
     log += '%15s %15s %15s\n' % ( 'xzz'.rjust(15), 'yzz'.rjust(15), 'zzz'.rjust(15) )
@@ -1289,11 +1350,13 @@ def CalcKurtzE(E, f, U, Properties, Label):
     By = (3.0/5.0)*B.sum(axis=0)[1]
     Bz = (3.0/5.0)*B.sum(axis=0)[2]
     # projection to the dipole moment vector
+    Bm = (3.0/5.0)*dot(M,B.sum(axis=0))/Mv
 
     Properties['B']=B
     Properties['Bx']=Bx
     Properties['By']=By
     Properties['Bz']=Bz
+    Properties['Bm']=Bm
 
     # second hyperpolarizability
     xxxx=Gamma_E(0,0,E,f)
@@ -1334,12 +1397,12 @@ def CalcKurtzE(E, f, U, Properties, Label):
     log += line % ( zx, zy, zz )
 
     log += 'First Hyperpolarizability [%s]\n\n' % U['u']
+    line = 4*U['b']['f'] + '\n\n'
+    log += '%15s %15s %15s %15s\n' % ( 'xxx'.rjust(15), 'yxx'.rjust(15), 'zxx'.rjust(15), '<beta_mu>'.rjust(15) )
+    log += line % ( xxx, yxx, zxx, Bm )
     line = 3*U['b']['f'] + '\n\n'
-    B = array([xxx,yxx,zxx,
-               xyy,yyy,zyy,
-               xzz,yzz,zzz],dtype=float64).reshape(3,3)
-    log += '%15s %15s %15s\n' % ( 'xxx'.rjust(15), 'yxx'.rjust(15), 'zxx'.rjust(15) )
-    log += line % ( xxx, yxx, zxx )
+    log += 'First Hyperpolarizability [%s]\n\n' % U['u']
+    line = 3*U['b']['f'] + '\n\n'
     log += '%15s %15s %15s\n' % ( 'xyy'.rjust(15), 'yyy'.rjust(15), 'zyy'.rjust(15) )
     log += line % ( xyy, yyy, zyy )
     log += '%15s %15s %15s\n' % ( 'xzz'.rjust(15), 'yzz'.rjust(15), 'zzz'.rjust(15) )
@@ -1466,5 +1529,6 @@ def atomn(s,ptable):
 #----------------------------------------------------------------------------
 # Main routine
 #----------------------------------------------------------------------------
-if __name__ == "__main__": Main(sys.argv[1:])
+if __name__ == "__main__":
+    main(sys.argv[1:])
 
