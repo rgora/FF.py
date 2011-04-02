@@ -54,7 +54,7 @@ reflags = re.DOTALL
 # Usage
 #----------------------------------------------------------------------------
 def usage():
-    '''Print usage information.'''
+    """Print usage information."""
     print __doc__
     print "Machine epsilon is: ",finfo(float64).eps,"for float64 type\n"
 
@@ -137,18 +137,18 @@ def main(argv):
         # Prepare inputs
         else:
             if gaussian:
-                GaussianInputs(f,fstep)
+                GAUSSIAN_INPUTS(f,fstep)
             if gamess:
-                GamessInputs(f,fstep)
+                GAMESS_INPUTS(f,fstep)
             if molcas:
-                MolcasInputs(f,fstep)
+                MOLCAS_INPUTS(f,fstep)
             if native:
-                MolcasNativeInputs(f,fstep)
+                MOLCAS_NATIVE_INPUTS(f,fstep)
 
 #----------------------------------------------------------------------------
 # Common parser routines
 #----------------------------------------------------------------------------
-class Parser:
+class PARSER:
     """A common parser routines"""
 
     def __init__(self, logpath, fstep, units):
@@ -156,7 +156,7 @@ class Parser:
         self.logpath = logpath
         self.fstep = fstep
         self.units = units
-        self.ext = "\.log"
+        self.ext = "\.log$"
         # input data
         self.energies = {}
         self.dipoles = {}
@@ -184,6 +184,22 @@ class Parser:
     
     def parsefile(self,filename):
         pass
+
+    def SaveEnergy(self,Label,ConfId,ConfNo,Field,Value):
+        if Label not in self.energies:
+            self.energies[Label]={}
+        if ConfId not in self.energies[Label]:
+            self.energies[Label][ConfId]={}
+        if Field not in self.energies[Label][ConfId]:
+            self.energies[Label][ConfId][Field]=Value
+
+    def SaveDipole(self,Label,ConfId,ConfNo,Field,Value):
+        if Label not in self.dipoles:
+            self.dipoles[Label]={}
+        if ConfId not in self.dipoles[Label]:
+            self.dipoles[Label][ConfId]={}
+        if Field not in self.dipoles[Label][ConfId]:
+            self.dipoles[Label][ConfId][Field]=Value
 
     def calculate(self):
         if self.runtyp == 'eds':
@@ -222,10 +238,10 @@ class Parser:
     def path(self):
         return self.logpath
 
-class InputTemplate(Template):
+class INPUT_TEMPLATE(Template):
     delimiter = '@'
 
-class Inputs:
+class INPUTS:
     """Common input routines"""
     def __init__(self, data, fstep):
         self.data = data
@@ -236,7 +252,7 @@ class Inputs:
         """Read or punch standard template"""
         try:
             self.tmpl = open(self.pkg+'.tmpl','r').read()
-            self.tmpl = InputTemplate(self.tmpl)
+            self.tmpl = INPUT_TEMPLATE(self.tmpl)
             self.WriteInputs()
         except IOError:
             print "There's no " + self.pkg + " template. I'm punching one - please check"
@@ -254,7 +270,7 @@ class Inputs:
 # Gamess (US) routines
 #----------------------------------------------------------------------------
 
-class GamessInputs(Inputs):
+class GAMESS_INPUTS(INPUTS):
     """Gamess US input routines"""
 
     def __init__(self, data, fstep):
@@ -278,7 +294,7 @@ class GamessInputs(Inputs):
  $basis  gbasis=sto ngauss=3 $end
 @data
 """
-        Inputs.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep)
 
     def WriteInputs(self):
 
@@ -323,7 +339,7 @@ class GamessInputs(Inputs):
                 filename = filename.replace(' ','_')
                 open(filename+'.inp','w').write(finput)
 
-class GAMESS(Parser):
+class GAMESS(PARSER):
     """A GAMESS log parser."""
 
     def parsefile(self,filename):
@@ -364,7 +380,7 @@ class GAMESS(Parser):
                 raise
 
         else:
-            print "File: ", filename, " is probably not a Gamess US file"
+            print "File: ", filename, " is probably not a Gamess US file or has an unexpected format."
 
     def parse_gms(self):
         """Read gamess(us) energies for this system."""
@@ -447,22 +463,6 @@ class GAMESS(Parser):
 
         return termination_code
 
-    def SaveEnergy(self,Label,ConfId,ConfNo,Field,Value):
-        if Label not in self.energies:
-            self.energies[Label]={}
-        if ConfId not in self.energies[Label]:
-            self.energies[Label][ConfId]={}
-        if Field not in self.energies[Label][ConfId]:
-            self.energies[Label][ConfId][Field]=Value
-
-    def SaveDipole(self,Label,ConfId,ConfNo,Field,Value):
-        if Label not in self.dipoles:
-            self.dipoles[Label]={}
-        if ConfId not in self.dipoles[Label]:
-            self.dipoles[Label][ConfId]={}
-        if Field not in self.dipoles[Label][ConfId]:
-            self.dipoles[Label][ConfId][Field]=Value
-
     def parse_eds(self):
         """Read gamess(us) eds energies for this system."""
 
@@ -533,7 +533,7 @@ class GAMESS(Parser):
 # Molcas routines
 #----------------------------------------------------------------------------
 
-class MolcasInputs(Inputs):
+class MOLCAS_INPUTS(INPUTS):
     """Molcas input routines"""
 
     def __init__(self, data, fstep):
@@ -578,7 +578,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
  &CASPT2
 
 """
-        Inputs.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep)
 
     def MakeCoords(self):
         '''read xyz file'''
@@ -612,7 +612,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
             finput = self.tmpl.substitute(data=xyz, field=FFPT)
             open(filename+'.inp','w').write(finput)
 
-class MolcasNativeInputs(Inputs):
+class MOLCAS_NATIVE_INPUTS(INPUTS):
     """Molcas input routines"""
 
     def __init__(self, data, fstep):
@@ -653,7 +653,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
  &CASPT2
 
 """
-        MolcasInputs.__init__(self, data, fstep)
+        MOLCAS_INPUTS.__init__(self, data, fstep)
 
     def MakeCoords(self):
         '''read native xyz file'''
@@ -666,7 +666,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
 
         return xyz
 
-class MOLCAS(Parser):
+class MOLCAS(PARSER):
     """A MOLCAS log parser."""
 
     def parsefile(self,filename):
@@ -756,7 +756,7 @@ class MOLCAS(Parser):
 # Gaussian routines
 #----------------------------------------------------------------------------
 
-class GaussianInputs(Inputs):
+class GAUSSIAN_INPUTS(INPUTS):
     """Gaussian 09 input routines"""
 
     def __init__(self, data, fstep):
@@ -777,7 +777,7 @@ gaussian ffield
 @data
 @field
 """
-        Inputs.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep)
 
     def WriteInputs(self):
 
@@ -802,7 +802,7 @@ gaussian ffield
             finput = self.tmpl.substitute(data=xyz, field=ffield, chk=filename+'.chk')
             open(filename+'.inp','w').write(finput)
 
-class GAUSSIAN(Parser):
+class GAUSSIAN(PARSER):
     """A gaussian 09 log parser."""
 
     def parsefiles(self):
