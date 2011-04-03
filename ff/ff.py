@@ -202,6 +202,7 @@ class PARSER:
             self.dipoles[label][conf_id][field]=value
 
     def Calculate(self):
+        """Calculate properties"""
         for e in self.energies.keys():
 
             self.properties['en'][e]={}
@@ -524,6 +525,13 @@ class GAMESS(PARSER):
                         line = FindLine(self.log,'E(MP2)=')
                         vale = float64(line.split()[-1])
                         self.SaveEnergy('MP2',conf_id,conf_no,field,vale)
+
+                    # ... read mp2 interaction energy terms ...
+                    if self.mplevl == 2 and self.Nmer(conf_id) >= 2:
+                        self.ReadMp2TotTerms(conf_id,conf_no,field)
+                    if self.mplevl == 2 and self.Nmer(conf_id) == len(conf_id) :
+                        self.ReadMp2MnbTerms('n-body',conf_no,field)
+
                     if self.mplevl == 2 and self.mp2prp == 't':
                         line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
                         line = SkipLines(self.log,6)
@@ -559,8 +567,41 @@ class GAMESS(PARSER):
                 self.SaveEnergy('DG(DEL,HF)',conf_id,conf_no,field,e['DE(DEL,HF)']+e['DG(DEL,F)'])
                 self.SaveEnergy('DG(HF)',conf_id,conf_no,field,e['DG(HF,F)'])
                 if self.Nmer(conf_id) == 2:
-                    self.SaveEnergy('G(EL,10)',conf_id,conf_no,field,e['E(EL,10)'])
+                    self.SaveEnergy('E(EL,10)',conf_id,conf_no,field,e['E(EL,10)'])
                     self.SaveEnergy('G(EX,HL)',conf_id,conf_no,field,e['E(EX,HL)']+e['DG(HL,F)'])
+
+                # ... and exit loop ...
+                break
+
+            # ... stuck all energies in e{} ...
+            if line.find('(') !=-1:
+                label = line.split()[0]
+                value = line.split()[1]
+
+                e[label]=float64(value)
+
+    def ReadMp2TotTerms(self,conf_id,conf_no,field):
+        """Read interaction energies for this system."""
+
+        line   = FindLine(self.log,'  INTERACTION ENERGY TERMS')
+        line   = SkipLines(self.log,4)
+
+        e = {}
+
+        while 1:
+
+            line = self.log.readline()
+
+            if line == '':
+                break
+
+            # ... all energies are read ...
+            if line.find(20*'-') !=-1:
+
+                # ... save ...
+                for k in e.keys():
+                    if k != 'DE(MP2)':
+                        self.SaveEnergy(k,conf_id,conf_no,field,e[k])
 
                 # ... and exit loop ...
                 break
@@ -589,16 +630,61 @@ class GAMESS(PARSER):
 
             # ... all energies are read ...
             if line.find(20*'-') !=-1:
+
                 # ... save ...
                 for k in e.keys():
                     if k.find('E(EL,10)') !=-1:
-                        self.SaveEnergy('G(EL,10)',conf_id,conf_no,field,e['E(EL,10)'])
+                        self.SaveEnergy(k,conf_id,conf_no,field,e[k])
                     if k.find('E(EX,HL)') !=-1:
                         label = 'G(EX,HL),'+k.split(',')[-1]
                         value = e[k]+e['DG(HL,F),'+k.split(',')[-1]]
                         self.SaveEnergy(label,conf_id,conf_no,field,value)
-                #self.SaveEnergy('DG(DEL,HF)',conf_id,conf_no,field,e['DE(DEL,HF)']+e['DG(DEL,F)'])
-                #self.SaveEnergy('DG(HF)',conf_id,conf_no,field,e['DG(HF,F)'])
+                    if k.find('DE(DEL,HF)') !=-1:
+                        label = 'DG(DEL,HF),'+k.split(',')[-1]
+                        value = e[k]+e['DG(DEL,F),'+k.split(',')[-1]]
+                        self.SaveEnergy(label,conf_id,conf_no,field,value)
+                    if k.find('DG(HF)') !=-1:
+                        self.SaveEnergy(k,conf_id,conf_no,field,e[k])
+
+                # ... and exit loop ...
+                break
+
+            # ... stuck all energies in e{} ...
+            if line.find('(') !=-1:
+
+                l = line.split()
+
+                if len(l) == 3:
+                    label = l[0]
+                    value = l[1]
+                if len(l) == 4:
+                    label = ''.join(l[:2])
+                    value = l[2]
+
+                e[label]=float64(value)
+
+    def ReadMp2MnbTerms(self,conf_id,conf_no,field):
+        """Read MP2 many-body partitioning for this system."""
+
+        line   = FindLine(self.log,'MANY BODY INTERACTION ENERGY TERMS')
+        line   = SkipLines(self.log,4)
+
+        e = {}
+
+        while 1:
+
+            line = self.log.readline()
+
+            if line == '':
+                break
+
+            # ... all energies are read ...
+            if line.find(20*'-') !=-1:
+
+                # ... save ...
+                for k in e.keys():
+                    if k != 'DE(MP2)':
+                        self.SaveEnergy(k,conf_id,conf_no,field,e[k])
 
                 # ... and exit loop ...
                 break
