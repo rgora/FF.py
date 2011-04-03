@@ -185,42 +185,45 @@ class PARSER:
     def ParseFile(self,filename):
         pass
 
-    def SaveEnergy(self,label,conf_id,conf_no,Field,Value):
+    def SaveEnergy(self,label,conf_id,conf_no,field,value):
         if label not in self.energies:
             self.energies[label]={}
         if conf_id not in self.energies[label]:
             self.energies[label][conf_id]={}
-        if Field not in self.energies[label][conf_id]:
-            self.energies[label][conf_id][Field]=Value
+        if field not in self.energies[label][conf_id]:
+            self.energies[label][conf_id][field]=value
 
-    def SaveDipole(self,label,conf_id,conf_no,Field,Value):
+    def SaveDipole(self,label,conf_id,conf_no,field,value):
         if label not in self.dipoles:
             self.dipoles[label]={}
         if conf_id not in self.dipoles[label]:
             self.dipoles[label][conf_id]={}
-        if Field not in self.dipoles[label][conf_id]:
-            self.dipoles[label][conf_id][Field]=Value
+        if field not in self.dipoles[label][conf_id]:
+            self.dipoles[label][conf_id][field]=value
 
     def Calculate(self):
-        if self.runtyp == 'eds':
-            for e in self.energies.keys():
-                self.properties['en'][e]={}
+        for e in self.energies.keys():
+
+            self.properties['en'][e]={}
+
+            if self.runtyp == 'eds':
                 for i in self.energies[e].keys():
                     self.properties['en'][e][i]={}
                     label = e + " C(" + i + ")"
                     CalcKurtzE(self.energies[e][i], self.fstep, self.units, self.properties['en'][e][i], label)
-            for d in self.dipoles.keys():
-                self.properties['dm'][d]={}
+            else:
+                CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
+
+        for d in self.dipoles.keys():
+
+            self.properties['dm'][d]={}
+
+            if self.runtyp == 'eds':
                 for i in self.dipoles[d].keys():
                     self.properties['dm'][d][i]={}
                     label = d + " C(" + i + ")"
                     CalcKurtzD(self.dipoles[d][i], self.fstep, self.units, self.properties['dm'][d][i], label)
-        else:
-            for e in self.energies.keys():
-                self.properties['en'][e]={}
-                CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
-            for d in self.dipoles.keys():
-                self.properties['dm'][d]={}
+            else:
                 CalcKurtzD(self.dipoles[d], self.fstep, self.units, self.properties['dm'][d], d)
 
     def SortFields(self):
@@ -507,8 +510,8 @@ class GAMESS(PARSER):
                     # ... read scf interaction energy terms ...
                     if self.Nmer(conf_id) >= 2:
                         self.ReadScfTotTerms(conf_id,conf_no,field)
-                    #if self.Nmer(conf_id) > 2:
-                    #    self.ReadScfMnbTerms(conf_id,conf_no,field)
+                    if self.Nmer(conf_id) == len(conf_id) :
+                        self.ReadScfMnbTerms('n-body',conf_no,field)
 
                     # ... read scf dipole ...
                     line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
@@ -558,6 +561,44 @@ class GAMESS(PARSER):
                 if self.Nmer(conf_id) == 2:
                     self.SaveEnergy('G(EL,10)',conf_id,conf_no,field,e['E(EL,10)'])
                     self.SaveEnergy('G(EX,HL)',conf_id,conf_no,field,e['E(EX,HL)']+e['DG(HL,F)'])
+
+                # ... and exit loop ...
+                break
+
+            # ... stuck all energies in e{} ...
+            if line.find('(') !=-1:
+                label = line.split()[0]
+                value = line.split()[1]
+
+                e[label]=float64(value)
+
+    def ReadScfMnbTerms(self,conf_id,conf_no,field):
+        """Read SCF many-body partitioning for this system."""
+
+        line   = FindLine(self.log,'MANY BODY INTERACTION ENERGY TERMS')
+        line   = SkipLines(self.log,4)
+
+        e = {}
+
+        while 1:
+
+            line = self.log.readline()
+
+            if line == '':
+                break
+
+            # ... all energies are read ...
+            if line.find(20*'-') !=-1:
+                # ... save ...
+                for k in e.keys():
+                    if k.find('E(EL,10)') !=-1:
+                        self.SaveEnergy('G(EL,10)',conf_id,conf_no,field,e['E(EL,10)'])
+                    if k.find('E(EX,HL)') !=-1:
+                        label = 'G(EX,HL),'+k.split(',')[-1]
+                        value = e[k]+e['DG(HL,F),'+k.split(',')[-1]]
+                        self.SaveEnergy(label,conf_id,conf_no,field,value)
+                #self.SaveEnergy('DG(DEL,HF)',conf_id,conf_no,field,e['DE(DEL,HF)']+e['DG(DEL,F)'])
+                #self.SaveEnergy('DG(HF)',conf_id,conf_no,field,e['DG(HF,F)'])
 
                 # ... and exit loop ...
                 break
