@@ -19,7 +19,15 @@ Options:
   -u, --units      set units; chose from: esu, si, asi 
                    (si multiplied by electric permittivity of free space),
                    or au which is the default
-  --ff25           prepares ff25.inp file for RZ's ff25.f
+
+Fields selection:
+  --fields 25         25 fields calculation (enabled by default; enough for isotropic <a> and <g>)
+           13         13 fields calculation (all diagonal components)
+           x[y|z]     5 fields along x [y or z] axis (selected longitudinal components)
+
+           GR[n,a,x]  Use for Generalized Romberg: n - the number of iterations
+                                                   a - the quotient e.g. 2 for RR
+                                                   x - the axis (0,1,2 for x,y or z)
 """
 
 #     Copyright (C) 2011, Robert W. Gora (robert.gora@pwr.wroc.pl)
@@ -74,8 +82,9 @@ def Main(argv):
     gaussian = 0
     molcas = 0
     native = 0
-    ff25 = 0
-    units=SetUnits('au')
+    frange = range(25)
+    grr = (0,0,0)
+    units = SetUnits('au')
 
     # Parse commandline
     try:
@@ -83,12 +92,12 @@ def Main(argv):
                                         ["help",
                                          "units=",
                                          "base-field=",
+                                         "fields=",
                                          "calculate",
                                          "gamess",
                                          "gaussian",
                                          "molcas",
                                          "molcas-native",
-                                         "ff25"
                                          ])
     except getopt.GetoptError, error:
         print(error)
@@ -116,10 +125,24 @@ def Main(argv):
             native=1
         elif opt in ("-c", "--calculate"):
             calculate=1
-        elif opt in ("--ff25"):
-            ff25=1
+        elif opt in ("--fields="):
+            if arg == '25':
+                frange = range(25)
+            elif arg == '13':
+                frange = range(13)
+            elif arg == 'x':
+                frange = [ 0, 1, 2, 7, 8]
+            elif arg == 'y':
+                frange = [ 0, 3, 4, 9,10]
+            elif arg == 'z':
+                frange = [ 0, 5, 6,11,12]
+            elif arg[:2] == 'GR':
+                grr = arg[3:-1].split(',')
+                grr = ( int(grr[0]), float(grr[1]), int(grr[2]) )
+            else:
+                print "Unrecognized fields selection ... assuming the default."
 
-    # Parse each data file/dir
+    # Parse each data file (with xyz coords) or dir (with the results)
     data_files = args
 
     for f in data_files:
@@ -128,22 +151,22 @@ def Main(argv):
         if calculate:
 
             if gamess:
-                data[f]=GAMESS(f, fstep,units)
+                data[f]=GAMESS(f, fstep,units,'gamess')
             if molcas:
-                data[f]=MOLCAS(f,-fstep,units)
+                data[f]=MOLCAS(f,-fstep,units,'molcas')
             if gaussian:
-                data[f]=GAUSSIAN(f,-fstep,units)
+                data[f]=GAUSSIAN(f,-fstep,units,'gaussian')
 
         # Prepare inputs
         else:
             if gaussian:
-                GAUSSIAN_INPUTS(f,fstep)
+                GAUSSIAN_INPUTS(f,fstep,frange,grr)
             if gamess:
-                GAMESS_INPUTS(f,fstep)
+                GAMESS_INPUTS(f,fstep,frange,grr)
             if molcas:
-                MOLCAS_INPUTS(f,fstep)
+                MOLCAS_INPUTS(f,fstep,frange,grr)
             if native:
-                MOLCAS_NATIVE_INPUTS(f,fstep)
+                MOLCAS_NATIVE_INPUTS(f,fstep,frange,grr)
 
 #----------------------------------------------------------------------------
 # Common parser routines
@@ -151,11 +174,12 @@ def Main(argv):
 class PARSER:
     """A common parser routines"""
 
-    def __init__(self, logpath, fstep, units):
+    def __init__(self, logpath, fstep, units, pkg):
         # initialize
         self.logpath = logpath
         self.fstep = fstep
         self.units = units
+        self.pkg = pkg
         self.ext = "\.log$"
         # input data
         self.energies = {}
@@ -207,7 +231,7 @@ class PARSER:
 
             self.properties['en'][e]={}
 
-            if self.runtyp == 'eds':
+            if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.energies[e].keys():
                     self.properties['en'][e][i]={}
                     label = e + " C(" + i + ")"
@@ -219,13 +243,18 @@ class PARSER:
 
             self.properties['dm'][d]={}
 
-            if self.runtyp == 'eds':
+            if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.dipoles[d].keys():
                     self.properties['dm'][d][i]={}
                     label = d + " C(" + i + ")"
                     CalcKurtzD(self.dipoles[d][i], self.fstep, self.units, self.properties['dm'][d][i], label)
             else:
                 CalcKurtzD(self.dipoles[d], self.fstep, self.units, self.properties['dm'][d], d)
+
+    def SetBaseField(self,field):
+        if ((self.fstep == 0 and abs(max(field)) > 0) or
+            (abs(max(field)) > 0 and abs(max(field)) < self.fstep)):
+            self.fstep = abs(max(field))
 
     def SortFields(self):
 
@@ -244,9 +273,16 @@ class INPUT_TEMPLATE(Template):
 
 class INPUTS:
     """Common input routines"""
-    def __init__(self, data, fstep):
+    def __init__(self, data, fstep, frange, grr):
         self.data = data
         self.fstep = fstep
+        self.grr = grr
+
+        if self.grr[0] > 0:
+            self.frange = range(2*self.grr[0]+1)
+        else:
+            self.frange = frange
+
         self.ReadTemplate()
 
     def ReadTemplate(self):
@@ -263,6 +299,57 @@ class INPUTS:
     def WriteInputs(self):
         pass
 
+    def RRfield(self,p,a,fstep,axis):
+        field = [ 0.0, 0.0, 0.0 ]
+        field[axis] = a**(p)*fstep
+        return tuple(field)
+
+    def Fields(self,i,f):
+        '''Set fields for GR or FF calculations'''
+
+        # grr(iter,axis,a)
+        if self.grr[0] > 0:
+
+            np = self.grr[0]
+            a = self.grr[1]
+            axis = self.grr[2]
+
+            fields = [ '%7.4f %7.4f %7.4f' % ( 0.0, 0.0, 0.0 ) ]
+
+            for p in range(np):
+                fields.append( '%7.4f %7.4f %7.4f' % self.RRfield(p,a, f,axis) )
+            for p in range(np):
+                fields.append( '%7.4f %7.4f %7.4f' % self.RRfield(p,a,-f,axis) )
+
+        else:
+            fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,- 0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  2*f),
+                    '%7.4f %7.4f %7.4f'  % (  -f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f)]
+
+        return  fields[i]
+
 #----------------------------------------------------------------------------
 # EDS Gamess (US) routines
 #----------------------------------------------------------------------------
@@ -274,7 +361,7 @@ class INPUTS:
 class GAMESS_INPUTS(INPUTS):
     """Gamess US input routines"""
 
-    def __init__(self, data, fstep):
+    def __init__(self, data, fstep, frange, grr):
         # template name
         self.pkg = "gamess"
         # template content
@@ -295,7 +382,7 @@ class GAMESS_INPUTS(INPUTS):
  $basis  gbasis=sto ngauss=3 $end
 @data
 """
-        INPUTS.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep, frange, grr)
 
     def WriteInputs(self):
 
@@ -320,12 +407,12 @@ class GAMESS_INPUTS(INPUTS):
         xyz=''.join(xyz)
         
         # write input files
-        for f in range(25):
+        for f in self.frange:
 
             # prepare onefld inputs
             filename = self.data.replace('.xyz','')+'_F%2d_' % f
             filename = filename.replace(' ','0')
-            ffield = ','.join(fields(f,self.fstep).split())
+            ffield = ','.join(self.Fields(f,self.fstep).split())
             finput = self.tmpl.substitute(data=xyz, fstep=self.fstep, field=ffield, onefld='.t.')
             if f==0:
                 finput = finput.replace(' $efield','!$efield')
@@ -414,52 +501,48 @@ class GAMESS(PARSER):
                 line = line.split()
 
                 # ... set field label ...
-                Field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
+                field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
 
-                # ... set base field ...
-                if ( (self.fstep == 0 and abs(Field[0]) > 0) or
-                     (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
-                    self.fstep = abs(Field[0])
+                # ... update base field ...
+                self.SetBaseField(field)
 
-                if Field not in self.energies[EnKey]:
-                    self.energies[EnKey][Field]= float64(SkipLines(self.log,1).split()[-1])
+                if field not in self.energies[EnKey]:
+                    self.energies[EnKey][field]= float64(SkipLines(self.log,1).split()[-1])
     
             # Case of single field calculations
             if line.find('ELECTRIC FIELD') !=-1:
                 line = line.split()
                 # ... set field label ...
-                Field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
-                # ... set base field ...
-                if ( (self.fstep == 0 and abs(Field[0]) > 0) or
-                     (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
-                    self.fstep = abs(Field[0])
+                field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
+                # ... update base field ...
+                self.SetBaseField(field)
                 # ... read scf energy ...
                 line = FindLine(self.log,'SCF CALCULATION')
                 if 'SCF' not in self.energies:
                     self.energies['SCF']={}
                 if 'SCF' not in self.dipoles:
                     self.dipoles['SCF']={}
-                if Field not in self.energies['SCF']:
-                    self.energies['SCF'][Field]= float64(FindLine(self.log,' FINAL ').split()[4])
+                if field not in self.energies['SCF']:
+                    self.energies['SCF'][field]= float64(FindLine(self.log,' FINAL ').split()[4])
                 # ... read scf dipole ...
-                if Field not in self.dipoles['SCF']:
+                if field not in self.dipoles['SCF']:
                     line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
                     line = SkipLines(self.log,6)
-                    self.dipoles['SCF'][Field] = array(line.split()[:3],dtype=float64)/self.au2d
+                    self.dipoles['SCF'][field] = array(line.split()[:3],dtype=float64)/self.au2d
                 # ... read scf energy ...
                 if self.mplevl == 2:
                     if 'MP2' not in self.energies:
                         self.energies['MP2']={}
-                    if Field not in self.energies['MP2']:
-                        self.energies['MP2'][Field]= float64(FindLine(self.log,'E(MP2)=').split()[-1])
+                    if field not in self.energies['MP2']:
+                        self.energies['MP2'][field]= float64(FindLine(self.log,'E(MP2)=').split()[-1])
                 if self.mplevl == 2 and self.mp2prp == 't':
                     if 'MP2' not in self.dipoles:
                         self.dipoles['MP2']={}
-                    if Field not in self.dipoles['MP2']:
+                    if field not in self.dipoles['MP2']:
                         line = FindLine(self.log,'MP2 PROPERTIES')
                         line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
                         line = SkipLines(self.log,6)
-                        self.dipoles['MP2'][Field] = array(line.split()[:3],dtype=float64)/self.au2d
+                        self.dipoles['MP2'][field] = array(line.split()[:3],dtype=float64)/self.au2d
 
         return termination_code
 
@@ -481,10 +564,8 @@ class GAMESS(PARSER):
                 l = line.split()
                 # ... set field label ...
                 field = ( round(float(l[-3]),4), round(float(l[-2]),4), round(float(l[-1]),4) )
-                # ... set base field ...
-                if ( (self.fstep == 0 and abs(field[0]) > 0) or
-                     (abs(field[0]) > 0 and abs(field[0]) < self.fstep) ):
-                    self.fstep = abs(field[0])
+                # ... update base field ...
+                self.SetBaseField(field)
             else:
                 return termination_code
 
@@ -710,7 +791,7 @@ class GAMESS(PARSER):
 class MOLCAS_INPUTS(INPUTS):
     """Molcas input routines"""
 
-    def __init__(self, data, fstep):
+    def __init__(self, data, fstep, frange, grr):
         # template name
         self.pkg = "molcas"
         # template content
@@ -752,7 +833,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
  &CASPT2
 
 """
-        INPUTS.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep, frange, grr)
 
     def MakeCoords(self):
         '''read xyz file'''
@@ -772,13 +853,13 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
         xyz=self.MakeCoords()
 
         # write input files
-        for f in range(25):
+        for f in self.frange:
             filename = self.data.replace('.xyz','')+'_F%2d_' % f
             filename = filename.replace(' ','0')
 
             # Prepare FFPT
             FFPT=' &FFPT\nDIPO\n'
-            F=fields(f,self.fstep).split()
+            F=self.Fields(f,self.fstep).split()
             FFPT+='X ' + F[0] + '\n'
             FFPT+='Y ' + F[1] + '\n'
             FFPT+='Z ' + F[2] + '\n'
@@ -789,7 +870,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
 class MOLCAS_NATIVE_INPUTS(INPUTS):
     """Molcas input routines"""
 
-    def __init__(self, data, fstep):
+    def __init__(self, data, fstep, frange, grr):
         # template content
         self.tmpl="""\
  &GATEWAY
@@ -827,7 +908,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
  &CASPT2
 
 """
-        MOLCAS_INPUTS.__init__(self, data, fstep)
+        MOLCAS_INPUTS.__init__(self, data, fstep, frange, grr)
 
     def MakeCoords(self):
         '''read native xyz file'''
@@ -859,11 +940,9 @@ class MOLCAS(PARSER):
             if line.find('FFPT    DIPO    COMP') !=-1:
                 line = line.split()
                 # ... set field label ...
-                Field = ( round(float(line[-5]),4), round(float(line[-3]),4), round(float(line[-1]),4) )
-                # ... set base field ...
-                if ( (self.fstep == 0 and abs(Field[0]) > 0) or
-                     (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
-                    self.fstep = abs(Field[0])
+                field = ( round(float(line[-5]),4), round(float(line[-3]),4), round(float(line[-1]),4) )
+                # ... update base field ...
+                self.SetBaseField(field)
                 # ... read all energies for this field ...
                 while 1:
                     line = self.log.readline()
@@ -873,48 +952,48 @@ class MOLCAS(PARSER):
                     if line.find('MOLCAS executing module SCF') !=-1:
                         if ('SCF' not in self.energies):
                             self.energies['SCF']={}
-                        if (Field not in self.energies['SCF']):
-                            self.energies['SCF'][Field]= float64(ReFindLine(self.log,'Total .+ energy').split()[-1])
+                        if (field not in self.energies['SCF']):
+                            self.energies['SCF'][field]= float64(ReFindLine(self.log,'Total .+ energy').split()[-1])
                         if ('SCF' not in self.dipoles):
                             self.dipoles['SCF']={}
-                        if (Field not in self.dipoles['SCF']):
+                        if (field not in self.dipoles['SCF']):
                             line = FindLine(self.log,'Dipole Moment')
                             dipl = SkipLines(self.log,2).split()
-                            self.dipoles['SCF'][Field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                            self.dipoles['SCF'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
                     # ... read rasscf energy and dipole ...
                     if line.find('MOLCAS executing module RASSCF') !=-1:
                         if ('RASSCF' not in self.energies):
                             self.energies['RASSCF']={}
-                        if (Field not in self.energies['RASSCF']):
+                        if (field not in self.energies['RASSCF']):
                             line = FindLine(self.log,'Final state energy')
                             line = SkipLines(self.log,3)
-                            self.energies['RASSCF'][Field] = float64(self.re_number.findall(line)[-1])
+                            self.energies['RASSCF'][field] = float64(self.re_number.findall(line)[-1])
                         if ('RASSCF' not in self.dipoles):
                             self.dipoles['RASSCF']={}
-                        if (Field not in self.dipoles['RASSCF']):
+                        if (field not in self.dipoles['RASSCF']):
                             line = FindLine(self.log,'Dipole Moment')
                             dipl = SkipLines(self.log,2).split()
-                            self.dipoles['RASSCF'][Field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                            self.dipoles['RASSCF'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
                     # ... read caspt2 energy and dipole ...
                     if line.find('MOLCAS executing module CASPT2') !=-1:
                         if ('CASPT2' not in self.energies):
                             self.energies['CASPT2']={}
-                        if (Field not in self.energies['CASPT2']):
+                        if (field not in self.energies['CASPT2']):
                             line = FindLine(self.log,'FINAL CASPT2 RESULT')
-                            self.energies['CASPT2'][Field]= float64(SkipLines(self.log,5).split()[-1])
+                            self.energies['CASPT2'][field]= float64(SkipLines(self.log,5).split()[-1])
                         if ('CASPT2' not in self.dipoles):
                             self.dipoles['CASPT2']={}
-                        if (Field not in self.dipoles['CASPT2']):
+                        if (field not in self.dipoles['CASPT2']):
                             line = FindLine(self.log,'Dipole Moment')
                             dipl = SkipLines(self.log,2).split()
-                            self.dipoles['CASPT2'][Field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                            self.dipoles['CASPT2'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
                     # ... read ccsdt energy ...
                     if line.find('MOLCAS executing module CCSD(T)') !=-1:
                         if ('CCSD' not in self.energies):
                             self.energies['CCSD']={}
-                        if (Field not in self.energies['CCSD']):
+                        if (field not in self.energies['CCSD']):
                             line = FindLine(self.log,'Total energy (diff)')
-                            self.energies['CCSD'][Field]= float64(line.split()[-2])
+                            self.energies['CCSD'][field]= float64(line.split()[-2])
                         while 1:
                             line = self.log.readline()
                             if line == '':
@@ -924,7 +1003,7 @@ class MOLCAS(PARSER):
                             if line.find('CCSD + T3') !=-1:
                                 if ('CCSD(T)' not in self.energies):
                                     self.energies['CCSD(T)']={}
-                                self.energies['CCSD(T)'][Field]= float64(line.split()[-1])
+                                self.energies['CCSD(T)'][field]= float64(line.split()[-1])
 
 #----------------------------------------------------------------------------
 # Gaussian routines
@@ -933,7 +1012,7 @@ class MOLCAS(PARSER):
 class GAUSSIAN_INPUTS(INPUTS):
     """Gaussian 09 input routines"""
 
-    def __init__(self, data, fstep):
+    def __init__(self, data, fstep, frange, grr):
         # template name
         self.pkg = "gaussian"
         # template content
@@ -951,7 +1030,7 @@ gaussian ffield
 @data
 @field
 """
-        INPUTS.__init__(self, data, fstep)
+        INPUTS.__init__(self, data, fstep, frange, grr)
 
     def WriteInputs(self):
 
@@ -969,10 +1048,10 @@ gaussian ffield
             fieldtail+='%7.4f\n' % 0.0
 
         # write input files
-        for f in range(25):
+        for f in self.frange:
             filename = self.data.replace('.xyz','')+'_F%2d_' % f
             filename = filename.replace(' ','0')
-            ffield = fields(f,self.fstep)+fieldtail
+            ffield = self.Fields(f,self.fstep)+fieldtail
             finput = self.tmpl.substitute(data=xyz, field=ffield, chk=filename+'.chk')
             open(filename+'.inp','w').write(finput)
 
@@ -1086,26 +1165,23 @@ class GAUSSIAN(PARSER):
         # ... read applied external field ...
         line = FindLine(self.log,'External E-field')
         line = SkipLines(self.log,1).split()
-        Field = ( round(float(line[1]),4), round(float(line[2]),4), round(float(line[3]),4) )
+        field = ( round(float(line[1]),4), round(float(line[2]),4), round(float(line[3]),4) )
 
-        # ... set base field ...
-        if ( (self.fstep == 0 and abs(Field[0]) > 0) or
-             (abs(Field[0]) > 0 and abs(Field[0]) < self.fstep) ):
-            self.fstep = abs(Field[0])
+        # ... update base field ...
+        self.SetBaseField(field)
 
-
-        if Field not in self.energies['SCF']:
-            self.energies['SCF'][Field]=ESCF
-        if mp2==1 and Field not in self.energies['MP2']:
-            self.energies['MP2'][Field]=EMP2
-        if mp3==1 and Field not in self.energies['MP3']:
-            self.energies['MP3'][Field]=EMP3
-        if mp4==1 and Field not in self.energies['MP4(SDQ)']:
-            self.energies['MP4(SDQ)'][Field]=EMP4
-        if ccsd==1 and Field not in self.energies['CCSD']:
-            self.energies['CCSD'][Field]=ECCSD
-        if ccsdt==1 and Field not in self.energies['CCSD(T)']:
-            self.energies['CCSD(T)'][Field]=ECCSDT
+        if field not in self.energies['SCF']:
+            self.energies['SCF'][field]=ESCF
+        if mp2==1 and field not in self.energies['MP2']:
+            self.energies['MP2'][field]=EMP2
+        if mp3==1 and field not in self.energies['MP3']:
+            self.energies['MP3'][field]=EMP3
+        if mp4==1 and field not in self.energies['MP4(SDQ)']:
+            self.energies['MP4(SDQ)'][field]=EMP4
+        if ccsd==1 and field not in self.energies['CCSD']:
+            self.energies['CCSD'][field]=ECCSD
+        if ccsdt==1 and field not in self.energies['CCSD(T)']:
+            self.energies['CCSD(T)'][field]=ECCSDT
 
         # ... read dipoles ...
         if FindLine(self.log,'Dipole Moment') != -1:
@@ -1121,11 +1197,11 @@ class GAUSSIAN(PARSER):
 
             D = array(line.split(),dtype=float64)
 
-            if mp2dip == 0 and Field not in self.dipoles['SCF']:
-                self.dipoles['SCF'][Field]=D
+            if mp2dip == 0 and field not in self.dipoles['SCF']:
+                self.dipoles['SCF'][field]=D
 
-            if mp2dip == 1 and Field not in self.dipoles['MP2']:
-                self.dipoles['MP2'][Field]=D
+            if mp2dip == 1 and field not in self.dipoles['MP2']:
+                self.dipoles['MP2'][field]=D
 
 #----------------------------------------------------------------------------
 # Utilities
@@ -1239,8 +1315,12 @@ def Fij(i,j,bi,bj):
 
 def Mu_E(i,E,f):
     '''Components of dipole moment (energy expansion).'''
-    mu_i=( (-2.0/3.0)*( E[Fi(i,f)] - E[Fi(i,-f)] ) + 
-           ( E[Fi(i,2*f)] - E[Fi(i,-2*f)] )/12.0 )/abs(f)
+    try:
+        mu_i=( (-2.0/3.0)*( E[Fi(i,f)] - E[Fi(i,-f)] ) + 
+               ( E[Fi(i,2*f)] - E[Fi(i,-2*f)] )/12.0 )/abs(f)
+    except KeyError:
+        mu_i=NaN
+
     return mu_i
 
 def Alpha_E(i,j,E,f):
@@ -1295,8 +1375,12 @@ def Gamma_E(i,j,E,f):
 
 def Mu_D(i,D,f):
     '''Components of dipole moment (dipole expansion).'''
-    mu_i=( (2.0/3.0)*( D[Fi(i,f)][i] + D[Fi(i,-f)][i] ) - 
-           (1.0/6.0)*( D[Fi(i,2*f)][i] + D[Fi(i,-2*f)][i] ) )
+    try:
+        mu_i=( (2.0/3.0)*( D[Fi(i,f)][i] + D[Fi(i,-f)][i] ) - 
+               (1.0/6.0)*( D[Fi(i,2*f)][i] + D[Fi(i,-2*f)][i] ) )
+    except KeyError:
+        mu_i=NaN
+
     return mu_i
 
 def Alpha_D(i,j,D,f):
