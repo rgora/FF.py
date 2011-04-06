@@ -12,7 +12,7 @@ Usage: ff.py [options] xyz file(s) or data dir(s)
 Options:
   -h, --help       show this help
   -c, --calculate  calculate properties for each data dir
-  -f, --base-field set base field
+  -f, --base-field set base field ( >= 0.0001; defaults to 0.001 )
   -s, --gaussian   prepare gaussian inputs (expects gaussian.tmpl)
   -g, --gamess     prepare gamess inputs (expects gamess.tmpl)
   -m, --molcas     prepare molcas inputs (expects molcas.tmpl)
@@ -21,12 +21,12 @@ Options:
                    or au which is the default
 
 Fields selection:
-  --fields 25         25 fields calculation (enabled by default; enough for isotropic <a> and <g>)
-           13         13 fields calculation (all diagonal components)
-           x[y|z]     5 fields along x [y or z] axis (selected longitudinal components)
+  --fields 25         25 fields sufficient for <g> (enabled by default)
+           13         13 fields sufficient for diagonal components
+           x          5 fields along x (y or z) axis for selected longitudinal components
 
            GR[n,a,x]  Use for Generalized Romberg: n - the number of iterations
-                                                   a - the quotient e.g. 2 for RR
+                                                   a - the quotient (e.g. 2 for RR)
                                                    x - the axis (0,1,2 for x,y or z)
 """
 
@@ -238,6 +238,8 @@ class PARSER:
                     CalcKurtzE(self.energies[e][i], self.fstep, self.units, self.properties['en'][e][i], label)
             else:
                 CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
+                for ffi in self.SortFields(self.energies[e].keys()):
+                    print ffi, self.energies[e][ffi]
 
         for d in self.dipoles.keys():
 
@@ -256,17 +258,16 @@ class PARSER:
             (abs(max(field)) > 0 and abs(max(field)) < self.fstep)):
             self.fstep = abs(max(field))
 
-    def SortFields(self):
+    def SortFields(self,fields):
 
-        self.fields = sorted( sorted( sorted( self.energies.keys(),
-            lambda a,b: cmp(abs(a[0]), abs(b[0])) ),
-            lambda a,b: cmp(abs(a[1]), abs(b[1])) ),
-            lambda a,b: cmp(abs(a[2]), abs(b[2])) )
+        sfields = sorted( sorted( sorted( fields,
+            lambda a,b: cmp(a[0], b[0]) ),
+            lambda a,b: cmp(a[1], b[1]) ),
+            lambda a,b: cmp(a[2], b[2]) )
 
-        self.nfields=(len(SFields)-1)/3/2
-        self.fstep=abs(SFields[1][0])
+        nfields=(len(sfields)-1)/3/2
 
-        return self.fields, self.nfields, self.fstep
+        return sfields
 
 class INPUT_TEMPLATE(Template):
     delimiter = '@'
@@ -307,7 +308,7 @@ class INPUTS:
     def Fields(self,i,f):
         '''Set fields for GR or FF calculations'''
 
-        # grr(iter,axis,a)
+        # grr(iter,a,axis)
         if self.grr[0] > 0:
 
             np = self.grr[0]
@@ -349,10 +350,6 @@ class INPUTS:
                     '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f)]
 
         return  fields[i]
-
-#----------------------------------------------------------------------------
-# EDS Gamess (US) routines
-#----------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------
 # Gamess (US) routines
@@ -1262,6 +1259,126 @@ def FF25Input(energies, fstep):
         for j in range(len(field)):
             field[j]=float64(field[j])
         out.write('%25.16e _%d_\n' % (energies[tuple(field)], i+1))
+
+#----------------------------------------------------------------------------
+# Generalized Romberg
+#----------------------------------------------------------------------------
+
+class ROMBERG:
+    """Generalized romberg analysis"""
+
+    def __init__(self, energies):
+        """Expects energies cast in a following dictionary:
+           energies{ (fx, fy, fz): value, ... }
+        """
+        self.energies = energies
+        self.fields = array(energies.keys(),dtype=float64)
+        self.max_field = self.fields.max(axis=0)
+        self.derivatives = {}
+
+        if self.max_field.max() == self.max_field.sum() > 0:
+
+            self.axis = self.max_field.argmax()
+            self.romberg = abs(self.fields.sum(axis=0)[self.axis]) <= 1.0e-10
+
+            if self.romberg:
+                # setup fields
+                self.fields.sort(axis=0)
+                self.fields = self.fields[:,self.axis]
+
+                # n: number steps; h: step size; a: quotient;
+                self.n = (self.fields.size-1)/2
+                self.h = self.fields[self.n+1:][0]
+                self.a = self.fields[0] / self.fields[1]
+
+                # recast energies
+                energies = {}
+                for f,e in self.energies.items():
+                    energies[ f[self.axis] ] = float64(e)
+
+                self.energies = energies
+
+
+        #print self.n, self.h, self.a
+        #print self.fields
+        #print self.energies
+        #for i in range(self.n):
+        #    print self.D(1,i)
+        #for i in range(self.n):
+        #    print self.D(2,i)
+        #for i in range(self.n-1):
+        #    print self.D(3,i)
+        #for i in range(self.n-1):
+        #    print self.D(4,i)
+
+        self.GR(1)
+        self.GR(2)
+        self.GR(3)
+        self.GR(4)
+
+
+    def GR(self,order):
+        """Generalized Romberg estimates"""
+
+        if order > 2:
+            n = self.n - 1
+        else:
+            n = self.n
+
+        P = []
+
+        for p in range(n):
+
+            if p == 0:
+                P.append( [ self.D(order,k) for k in range(n) ] )
+            else:
+                P.append( [ ( self.a**(2*p)*P[p-1][k] - P[p-1][k+1] ) / (self.a**(2*p)-1) for k in range(n-p) ] )
+
+        for i in range(len(P)):
+            line = ''
+            for j in range(len(P[i])):
+                line += "%12.3f " % P[j][i]
+            print line
+
+
+    def D(self,order,k):
+        """Finite-difference derivatives"""
+
+        k = float64(k)
+
+        # ... 1st derivative ...
+        if order == 1:
+            D = ( self.energies[ self.h*self.a**k] - 
+                  self.energies[-self.h*self.a**k] 
+                ) / ( 2.0*self.h*self.a**k )
+
+        # ... 2nd derivative ...
+        if order == 2:
+            D = ( self.energies[-self.h*self.a**k] +
+                  self.energies[ self.h*self.a**k] - 
+                  2.0*self.energies[0.0]
+                ) / (self.h*self.a**k)**2.0
+
+        # ... 3rd derivative ...
+        if order == 3:
+            D = 3.0*( self.a*self.energies[-self.h*self.a**k] -
+                      self.a*self.energies[ self.h*self.a**k] +
+                      self.energies[ self.h*self.a**(k+1.0)] -
+                      self.energies[-self.h*self.a**(k+1.0)]
+                    ) / ( self.a*(self.a**2.0-1.0)*(self.h*self.a**k)**3.0 )
+
+        # ... 4th derivative ...
+        if order == 4:
+            D = 12.0*( ( self.energies[-self.h*self.a**(k+1.0)] +
+                         self.energies[ self.h*self.a**(k+1.0)] ) -
+                       ( (self.a**2.0)*self.energies[-self.h*self.a**k] +
+                         (self.a**2.0)*self.energies[ self.h*self.a**k] ) +
+                         2.0*(self.a**2.0-1.0)*self.energies[0.0]
+                     ) / ( (self.a**2.0)*(self.a**2.0-1.0)*(self.h*self.a**k)**4.0 )
+
+        # ... return ...
+        return D
+
 
 #----------------------------------------------------------------------------
 # Property calculation routines
