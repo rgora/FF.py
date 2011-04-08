@@ -1274,7 +1274,8 @@ class ROMBERG:
         self.energies = energies
         self.fields = array(energies.keys(),dtype=float64)
         self.max_field = self.fields.max(axis=0)
-        self.derivatives = {}
+        self.rr_log = {}
+        self.rr = {}
 
         if self.max_field.max() == self.max_field.sum() > 0:
 
@@ -1298,87 +1299,131 @@ class ROMBERG:
 
                 self.energies = energies
 
-
-        #print self.n, self.h, self.a
-        #print self.fields
-        #print self.energies
-        #for i in range(self.n):
-        #    print self.D(1,i)
-        #for i in range(self.n):
-        #    print self.D(2,i)
-        #for i in range(self.n-1):
-        #    print self.D(3,i)
-        #for i in range(self.n-1):
-        #    print self.D(4,i)
-
-        self.GR(1)
-        self.GR(2)
-        self.GR(3)
-        self.GR(4)
-
+                # perform the analysis
+                for o in [1, 2, 3, 4]:
+                    self.GR(o)
+                    print self.rr_log[o]
 
     def GR(self,order):
         """Generalized Romberg estimates"""
 
-        if order > 2:
-            n = self.n - 1
-        else:
+        # Set number of GR iterations and output format
+        if order == 1:
             n = self.n
+            line = '%10.4f'
+        if order == 2:
+            n = self.n
+            line = '%10.3f'
+        if order == 3:
+            n = self.n - 1
+            line = '%10.2f'
+        if order == 4:
+            n = self.n - 1
+            line = '%10.1f'
 
+        # Romberg iterations forming P[k,p]
         P = []
+        dP = {}
 
         for p in range(n):
 
             if p == 0:
                 P.append( [ self.D(order,k) for k in range(n) ] )
             else:
-                P.append( [ ( self.a**(2*p)*P[p-1][k] - P[p-1][k+1] ) / (self.a**(2*p)-1) for k in range(n-p) ] )
+                P.append( [ ( self.a**(2*p)*P[p-1][k] - P[p-1][k+1] ) / 
+                            ( self.a**(2*p)-1 ) for k in range(n-p) ] )
+
+        # Format results for final printout and storage
+        log  = 'GR scheme %1d derivative (a=%3.1f)\n' % (order, self.a)
+        log += (9+10*n)*'-'
+        log += '\n%9s' % ( 'field / k' )
+        log += '%10d'*n % tuple( [k for k in range(n) ] )
+        log += '\n' + (9+10*n)*'-'
 
         for i in range(len(P)):
-            line = ''
+            log += '\n%9.4f' % ( self.h*self.a**i )
+
             for j in range(len(P[i])):
-                line += "%12.3f " % P[j][i]
-            print line
+                log += line % P[j][i]
+                if j > 0:
+                    dP[(j,i)] = ( 2*P[j][i] - P[j-1][i] - P[j-1][i+1] )/2
 
+        try:
+            r_i = abs( array(dP.values()) ).argmin()
+            r_k = dP.keys()[r_i] 
 
+            log += '\n' + (9+10*n)*'-'
+            log += '\n P[p=%d,k=%d] = ' % ( r_k[1]+1, r_k[0] )
+            self.rr[order] = P[r_k[0]][r_k[1]]
+            log += line % self.rr[order]
+            log += ' +/- ' + line % dP.values()[r_i]
+            log += '\n' + (9+10*n)*'-'
+        except ValueError:
+            self.rr[order] = NaN
+
+        log += '\n'
+
+        self.rr_log[order] = log
+
+        # Wrap up and exit
+        return 0
+
+        # Just for testing
+        log  = 'GR scheme %1d derivative (a=%3.1f)\n' % (order, self.a)
+        log += (9+10*n)*'-'
+        log += '\n%9s' % ( 'field / k' )
+        log += '%10d'*n % tuple( [k for k in range(n) ] )
+        log += '\n' + (9+10*n)*'-'
+
+        for i in range(len(P)):
+            log += '\n%9.4f' % ( self.h*self.a**i )
+
+            for j in range(len(P[i])):
+                if j > 0:
+                    dP[(j,i)] = ( 2*P[j][i] - P[j-1][i] - P[j-1][i+1] )/2
+                    log += line % dP[(j,i)]
+                else:
+                    log += line % NaN
+
+        log += '\n'
+        print log
+
+    # Zeroth-order central-difference derivatives
     def D(self,order,k):
         """Finite-difference derivatives"""
-
-        k = float64(k)
 
         # ... 1st derivative ...
         if order == 1:
             D = ( self.energies[ self.h*self.a**k] - 
                   self.energies[-self.h*self.a**k] 
-                ) / ( 2.0*self.h*self.a**k )
+                ) / ( 2*self.h*self.a**k )
 
         # ... 2nd derivative ...
         if order == 2:
             D = ( self.energies[-self.h*self.a**k] +
                   self.energies[ self.h*self.a**k] - 
-                  2.0*self.energies[0.0]
-                ) / (self.h*self.a**k)**2.0
+                  2*self.energies[0.0]
+                ) / (self.h*self.a**k)**2
 
         # ... 3rd derivative ...
         if order == 3:
-            D = 3.0*( self.a*self.energies[-self.h*self.a**k] -
-                      self.a*self.energies[ self.h*self.a**k] +
-                      self.energies[ self.h*self.a**(k+1.0)] -
-                      self.energies[-self.h*self.a**(k+1.0)]
-                    ) / ( self.a*(self.a**2.0-1.0)*(self.h*self.a**k)**3.0 )
+            D = 3*( self.a*self.energies[-self.h*self.a**k] -
+                    self.a*self.energies[ self.h*self.a**k] +
+                    self.energies[ self.h*self.a**(k+1)] -
+                    self.energies[-self.h*self.a**(k+1)]
+                  ) / ( self.a*(self.a**2-1)*(self.h*self.a**k)**3 )
 
         # ... 4th derivative ...
         if order == 4:
-            D = 12.0*( ( self.energies[-self.h*self.a**(k+1.0)] +
-                         self.energies[ self.h*self.a**(k+1.0)] ) -
-                       ( (self.a**2.0)*self.energies[-self.h*self.a**k] +
-                         (self.a**2.0)*self.energies[ self.h*self.a**k] ) +
-                         2.0*(self.a**2.0-1.0)*self.energies[0.0]
-                     ) / ( (self.a**2.0)*(self.a**2.0-1.0)*(self.h*self.a**k)**4.0 )
+            D = 12*( ( self.energies[-self.h*self.a**(k+1)] +
+                       self.energies[ self.h*self.a**(k+1)] ) -
+                     ( (self.a**2)*self.energies[-self.h*self.a**k] +
+                       (self.a**2)*self.energies[ self.h*self.a**k] ) +
+                       2*(self.a**2-1)*self.energies[0.0]
+                   ) / ( (self.a**2)*(self.a**2-1)*(self.h*self.a**k)**4 )
 
         # ... return ...
         return D
-
 
 #----------------------------------------------------------------------------
 # Property calculation routines
