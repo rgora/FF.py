@@ -28,6 +28,9 @@ Fields selection:
            GR[n,a,x]  Use for Generalized Romberg: n - the number of iterations
                                                    a - the quotient (e.g. 2 for RR)
                                                    x - the axis (0,1,2 for x,y or z)
+
+  --print-fields      print the chosen selection of fields
+
 """
 
 #     Copyright (C) 2011, Robert W. Gora (robert.gora@pwr.wroc.pl)
@@ -62,16 +65,17 @@ reflags = re.DOTALL
 # Usage
 #----------------------------------------------------------------------------
 def Usage():
-    """Print usage information."""
+    """Print usage information and exit."""
     print __doc__
     print "Machine epsilon is: ",finfo(float64).eps,"for float64 type\n"
+
+    sys.exit()
 
 #----------------------------------------------------------------------------
 # Main
 #----------------------------------------------------------------------------
 def Main(argv):
     '''Parse commandline and loop throught the logs'''
-
 
     data = {}
 
@@ -93,6 +97,7 @@ def Main(argv):
                                          "units=",
                                          "base-field=",
                                          "fields=",
+                                         "print-fields",
                                          "calculate",
                                          "gamess",
                                          "gaussian",
@@ -102,15 +107,12 @@ def Main(argv):
     except getopt.GetoptError, error:
         print(error)
         Usage()
-        sys.exit(2)
     if not argv:
         Usage()
-        sys.exit(0)
 
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             Usage()
-            sys.exit()
         elif opt in ("-u", "--units="):
             units=SetUnits(arg)
         elif opt in ("-f", "--base-field="):
@@ -141,6 +143,8 @@ def Main(argv):
                 grr = ( int(grr[0]), float(grr[1]), int(grr[2]) )
             else:
                 print "Unrecognized fields selection ... assuming the default."
+        elif opt in ("--print-fields"):
+            print INPUTS(None, fstep, frange, grr).PrintFields()
 
     # Parse each data file (with xyz coords) or dir (with the results)
     data_files = args
@@ -185,7 +189,7 @@ class PARSER:
         self.energies = {}
         self.dipoles = {}
         # results
-        self.properties = {'en':{}, 'dm':{}}
+        self.properties = {'E':{}, 'D':{}}
         # useful regexp's
         self.re_number=re.compile(r"[+-]? *(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?")
         # parse files and calculate properties
@@ -229,29 +233,49 @@ class PARSER:
         """Calculate properties"""
         for e in self.energies.keys():
 
-            self.properties['en'][e]={}
+            self.properties['E'][e]={}
 
             if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.energies[e].keys():
-                    self.properties['en'][e][i]={}
-                    label = e + " C(" + i + ")"
-                    CalcKurtzE(self.energies[e][i], self.fstep, self.units, self.properties['en'][e][i], label)
+                    self.properties['E'][e][i]={}
+                    label = e + " C(" + i + ") energy"
+                    self.properties['E'][e][i]['FF'] = KURTZ_E(self.energies[e][i], self.fstep, self.units, label)
+                    self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], label)
             else:
-                CalcKurtzE(self.energies[e], self.fstep, self.units, self.properties['en'][e], e)
-                for ffi in self.SortFields(self.energies[e].keys()):
-                    print ffi, self.energies[e][ffi]
+                label = e + " energy"
+                self.properties['E'][e]['FF'] = KURTZ_E(self.energies[e], self.fstep, self.units, label)
+                self.properties['E'][e]['RR'] = ROMBERG(self.energies[e], label)
 
         for d in self.dipoles.keys():
 
-            self.properties['dm'][d]={}
+            self.properties['D'][d]={}
 
             if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.dipoles[d].keys():
-                    self.properties['dm'][d][i]={}
-                    label = d + " C(" + i + ")"
-                    CalcKurtzD(self.dipoles[d][i], self.fstep, self.units, self.properties['dm'][d][i], label)
+                    self.properties['D'][d][i]={}
+                    label = d + " C(" + i + ") dipole"
+                    self.properties['D'][d][i]['FF'] = KURTZ_D(self.dipoles[d][i], self.fstep, self.units, label)
+                    self.properties['D'][d][i]['RR'] = {
+                        'X': ROMBERG(self.SelectDipoles(self.dipoles[d][i],0), label+" (x component)"),
+                        'Y': ROMBERG(self.SelectDipoles(self.dipoles[d][i],1), label+" (y component)"),
+                        'Z': ROMBERG(self.SelectDipoles(self.dipoles[d][i],2), label+" (z component)") }
             else:
-                CalcKurtzD(self.dipoles[d], self.fstep, self.units, self.properties['dm'][d], d)
+                label = d + " dipole"
+                self.properties['D'][d]['FF'] = KURTZ_D(self.dipoles[d], self.fstep, self.units, label)
+                self.properties['D'][d]['RR'] = {
+                    'X': ROMBERG(self.SelectDipoles(self.dipoles[d],0), label+" (x component)"),
+                    'Y': ROMBERG(self.SelectDipoles(self.dipoles[d],1), label+" (y component)"),
+                    'Z': ROMBERG(self.SelectDipoles(self.dipoles[d],2), label+" (z component)") }
+
+    def SelectDipoles(self,D,axis):
+        """Return selected elements of dipole moments for RR"""
+
+        dipoles={}
+
+        for f in D.keys():
+            dipoles[f]=D[f][axis]
+
+        return dipoles
 
     def SetBaseField(self,field):
         if ((self.fstep == 0 and abs(max(field)) > 0) or
@@ -269,6 +293,9 @@ class PARSER:
 
         return sfields
 
+#----------------------------------------------------------------------------
+# Common input template routines
+#----------------------------------------------------------------------------
 class INPUT_TEMPLATE(Template):
     delimiter = '@'
 
@@ -296,6 +323,8 @@ class INPUTS:
             print "There's no " + self.pkg + " template. I'm punching one - please check"
             open(self.pkg+'.tmpl','w').write(self.tmpl)
             sys.exit()
+        except AttributeError:
+            pass
 
     def WriteInputs(self):
         pass
@@ -350,6 +379,16 @@ class INPUTS:
                     '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f)]
 
         return  fields[i]
+
+    def PrintFields(self):
+        '''Prepare selected fields for printout'''
+
+        log = "Selected fields:\n"
+
+        for f in self.frange:
+            log += "F %4d  %s\n" % (f, self.Fields(f,self.fstep))
+
+        return log
 
 #----------------------------------------------------------------------------
 # Gamess (US) routines
@@ -407,7 +446,7 @@ class GAMESS_INPUTS(INPUTS):
         for f in self.frange:
 
             # prepare onefld inputs
-            filename = self.data.replace('.xyz','')+'_F%2d_' % f
+            filename = self.data.replace('.xyz','')+'_%.4f_F%2d_' % (self.fstep, f)
             filename = filename.replace(' ','0')
             ffield = ','.join(self.Fields(f,self.fstep).split())
             finput = self.tmpl.substitute(data=xyz, fstep=self.fstep, field=ffield, onefld='.t.')
@@ -420,7 +459,7 @@ class GAMESS_INPUTS(INPUTS):
             # write kurtz's ffield input
             if f==0:
                 finput = self.tmpl.substitute(data=xyz, fstep=self.fstep, field=ffield, onefld='.f.')
-                filename = self.data.replace('.xyz','')+'_%.4f' % self.fstep
+                filename = self.data.replace('.xyz','')+'_ffield_%.4f' % self.fstep
                 filename = filename.replace(' ','_')
                 open(filename+'.inp','w').write(finput)
 
@@ -432,7 +471,7 @@ class GAMESS(PARSER):
 
         self.log = open(filename)
 
-        # Molcas conversion factor
+        # Gamess conversion factor
         self.au2d=2.541766
 
         if FindLine(self.log,'$CONTRL OPTIONS') !=-1:
@@ -1261,31 +1300,33 @@ def FF25Input(energies, fstep):
         out.write('%25.16e _%d_\n' % (energies[tuple(field)], i+1))
 
 #----------------------------------------------------------------------------
-# Generalized Romberg
+# Generalized Romberg analysis
 #----------------------------------------------------------------------------
 
 class ROMBERG:
     """Generalized romberg analysis"""
 
-    def __init__(self, energies):
+    def __init__(self, energies, label):
         """Expects energies cast in a following dictionary:
            energies{ (fx, fy, fz): value, ... }
         """
         self.energies = energies
+        self.label = label
         self.fields = array(energies.keys(),dtype=float64)
         self.max_field = self.fields.max(axis=0)
         self.rr_log = {}
         self.rr = {}
+        self.enforce = False
 
-        if self.max_field.max() == self.max_field.sum() > 0:
+        if self.max_field.max() == self.max_field.sum() > 0 or self.enforce:
 
             self.axis = self.max_field.argmax()
             self.romberg = abs(self.fields.sum(axis=0)[self.axis]) <= 1.0e-10
 
             if self.romberg:
                 # setup fields
-                self.fields.sort(axis=0)
                 self.fields = self.fields[:,self.axis]
+                self.fields.sort(axis=0)
 
                 # n: number steps; h: step size; a: quotient;
                 self.n = (self.fields.size-1)/2
@@ -1311,15 +1352,19 @@ class ROMBERG:
         if order == 1:
             n = self.n
             line = '%10.4f'
+            sufix='st'
         if order == 2:
             n = self.n
             line = '%10.3f'
+            sufix='nd'
         if order == 3:
             n = self.n - 1
             line = '%10.2f'
+            sufix='rd'
         if order == 4:
             n = self.n - 1
             line = '%10.1f'
+            sufix='th'
 
         # Romberg iterations forming P[k,p]
         P = []
@@ -1334,7 +1379,7 @@ class ROMBERG:
                             ( self.a**(2*p)-1 ) for k in range(n-p) ] )
 
         # Format results for final printout and storage
-        log  = 'GR scheme %1d derivative (a=%3.1f)\n' % (order, self.a)
+        log  = 'GR scheme %1d%s derivative (a=%3.1f) %s\n' % (order, sufix, self.a, self.label)
         log += (9+10*n)*'-'
         log += '\n%9s' % ( 'field / k' )
         log += '%10d'*n % tuple( [k for k in range(n) ] )
@@ -1427,6 +1472,323 @@ class ROMBERG:
 
 #----------------------------------------------------------------------------
 # Property calculation routines
+#----------------------------------------------------------------------------
+
+class KURTZ:
+
+    def __init__(self, base_property, fstep, units, method):
+        self.base_property = base_property
+        self.fstep = fstep
+        self.units = units
+        self.method = method
+
+        self.properties={}
+
+        self.Calculate()
+        self.Log()
+        print self.log
+
+    def Calculate(self):
+        '''Calculate properties using finite field method (dipole expansion).
+
+           self.properties dictionary stores properties as tensors:
+           {M, A, B, G} and isotropic properties {Mv, Av, Bx, By, Bz, Bm, Gv}
+           
+           individual tensor elements are also stored as:
+           self.label   x,   xx, xy, xz,   xxx, yxx, zxx,   xxxx, xxyy, xxzz,
+                        y,   yx, yy, yz,   xyy, yyy, zyy,   yyxx, yyyy, yyzz,
+                        z,   zx, zy, zz,   xzz, yzz, zzz,   zzxx, zzyy, zzzz,
+                       Mv,           Av,    Bx,  By,  Bz,                 Gv, 
+                                                      Bm,
+        '''
+
+        # set base property and field step
+        P = self.base_property
+        f = self.fstep  
+
+        # calculate vector/tensor elements
+        self.x = x = self.Mu(0, P, f)
+        self.y = y = self.Mu(1, P, f)
+        self.z = z = self.Mu(2, P, f)
+        # pack tensor elements into an array
+        self.M = M = array([x,y,z],dtype=float64)
+        # vector norm
+        self.Mv = Mv = sqrt(dot(M,M))
+
+        self.properties['M'] = M
+        self.properties['Mv'] = Mv
+
+        # polarizability
+        self.xx = xx = self.Alpha(0,0, P, f)
+        self.xy = xy = self.Alpha(0,1, P, f)
+        self.xz = xz = self.Alpha(0,2, P, f)
+        self.yx = yx = self.Alpha(1,0, P, f)
+        self.yy = yy = self.Alpha(1,1, P, f)
+        self.yz = yz = self.Alpha(1,2, P, f)
+        self.zx = zx = self.Alpha(2,0, P, f)
+        self.zy = zy = self.Alpha(2,1, P, f)
+        self.zz = zz = self.Alpha(2,2, P, f)
+        # pack tensor elements into an array
+        self.A = A = array([xx,xy,xz,
+                            yx,yy,yz,
+                            zx,zy,zz],dtype=float64).reshape(3,3)
+        # isotropic average
+        self.Av = Av = trace(A)/3.0
+
+        self.properties['A'] = A
+        self.properties['Av'] = Av
+
+        # first hyperpolarizability
+        self.xxx = xxx = self.Beta(0,0, P, f)
+        self.xyy = xyy = self.Beta(0,1, P, f)
+        self.xzz = xzz = self.Beta(0,2, P, f)
+        self.yxx = yxx = self.Beta(1,0, P, f)
+        self.yyy = yyy = self.Beta(1,1, P, f)
+        self.yzz = yzz = self.Beta(1,2, P, f)
+        self.zxx = zxx = self.Beta(2,0, P, f)
+        self.zyy = zyy = self.Beta(2,1, P, f)
+        self.zzz = zzz = self.Beta(2,2, P, f)
+        # pack tensor elements into an array
+        B = array([xxx,yxx,zxx,
+                   xyy,yyy,zyy,
+                   xzz,yzz,zzz],dtype=float64).reshape(3,3)
+        # vector component
+        self.Bx = Bx = (3.0/5.0)*B.sum(axis=0)[0]
+        self.By = By = (3.0/5.0)*B.sum(axis=0)[1]
+        self.Bz = Bz = (3.0/5.0)*B.sum(axis=0)[2]
+        # projection to the dipole moment vector
+        self.Bm = Bm = (3.0/5.0)*dot(M,B.sum(axis=0))/Mv
+
+        self.properties['B'] = B
+        self.properties['Bx'] = Bx
+        self.properties['By'] = By
+        self.properties['Bz'] = Bz
+        self.properties['Bm'] = Bm
+
+        # second hyperpolarizability
+        self.xxxx = xxxx = self.Gamma(0,0, P, f)
+        self.xxyy = xxyy = self.Gamma(0,1, P, f)
+        self.xxzz = xxzz = self.Gamma(0,2, P, f)
+        self.yyxx = yyxx = self.Gamma(1,0, P, f)
+        self.yyyy = yyyy = self.Gamma(1,1, P, f)
+        self.yyzz = yyzz = self.Gamma(1,2, P, f)
+        self.zzxx = zzxx = self.Gamma(2,0, P, f)
+        self.zzyy = zzyy = self.Gamma(2,1, P, f)
+        self.zzzz = zzzz = self.Gamma(2,2, P, f)
+        # pack tensor elements into an array
+        self.G = G = array([xxxx,xxyy,xxzz,
+                            yyxx,yyyy,yyzz,
+                            zzxx,zzyy,zzzz],dtype=float64).reshape(3,3)
+        # isotropic average
+        self.Gv = Gv = (G.trace()+2.0*(G[0,1]+G[0,2]+G[1,2]))/5.0
+
+        self.properties['G'] = G
+        self.properties['Gv'] = Gv
+
+    def Log(self):
+        '''Prepare log'''
+
+        # Prepare data for printout
+        self.log  = 'Static electric dipole properties (finite field %s, f=%.4f) \n\n' % (self.method, self.fstep)
+
+        self.log += 'Dipole moment [%s]\n\n' % self.units['u']
+        line = 4*self.units['m']['f'] + '\n\n'
+        self.log += '%15s %15s %15s %15s\n' % ( 'x'.rjust(15), 'y'.rjust(15), 'z'.rjust(15), '<mu>'.rjust(15) )
+        self.log += line % ( self.x, self.y, self.z, self.Mv )
+
+        self.log += 'Polarizability [%s]\n\n' % self.units['u']
+        line = 4*self.units['a']['f'] + '\n\n'
+        self.log += '%15s %15s %15s %15s\n' % ( 'xx'.rjust(15), 'xy'.rjust(15), 'xz'.rjust(15), '<alpha>'.rjust(15) )
+        self.log += line % ( self.xx, self.xy, self.xz, self.Av )
+        line = 3*self.units['a']['f'] + '\n\n'
+        self.log += '%15s %15s %15s\n' % ( 'yx'.rjust(15), 'yy'.rjust(15), 'yz'.rjust(15) )
+        self.log += line % ( self.yx, self.yy, self.yz )
+        self.log += '%15s %15s %15s\n' % ( 'zx'.rjust(15), 'zy'.rjust(15), 'zz'.rjust(15) )
+        self.log += line % ( self.zx, self.zy, self.zz )
+
+        self.log += 'First Hyperpolarizability [%s]\n\n' % self.units['u']
+        line = 4*self.units['b']['f'] + '\n\n'
+        self.log += '%15s %15s %15s %15s\n' % ( 'xxx'.rjust(15), 'yxx'.rjust(15), 'zxx'.rjust(15), '<beta_mu>'.rjust(15) )
+        self.log += line % ( self.xxx, self.yxx, self.zxx, self.Bm )
+        line = 3*self.units['b']['f'] + '\n\n'
+        self.log += '%15s %15s %15s\n' % ( 'xyy'.rjust(15), 'yyy'.rjust(15), 'zyy'.rjust(15) )
+        self.log += line % ( self.xyy, self.yyy, self.zyy )
+        self.log += '%15s %15s %15s\n' % ( 'xzz'.rjust(15), 'yzz'.rjust(15), 'zzz'.rjust(15) )
+        self.log += line % ( self.xzz, self.yzz, self.zzz )
+        self.log += '%15s %15s %15s\n' % ( '<beta_x>'.rjust(15), '<beta_y>'.rjust(15), '<beta_z>'.rjust(15) )
+        self.log += line % ( self.Bx, self.By, self.Bz )
+
+        self.log += 'Second Hyperpolarizability [%s]\n\n' % self.units['u']
+        line = 4*self.units['g']['f'] + '\n\n'
+        self.log += '%15s %15s %15s %15s\n' % ( 'xxxx'.rjust(15), 'xxyy'.rjust(15), 'xxzz'.rjust(15), '<gamma>'.rjust(15) )
+        self.log += line % ( self.xxxx, self.xxyy, self.xxzz, self.Gv )
+        line = 3*self.units['g']['f'] + '\n\n'
+        self.log += '%15s %15s %15s\n' % ( 'yyxx'.rjust(15), 'yyyy'.rjust(15), 'yyzz'.rjust(15) )
+        self.log += line % ( self.yyxx, self.yyyy, self.yyzz )
+        self.log += '%15s %15s %15s\n' % ( 'zzxx'.rjust(15), 'zzyy'.rjust(15), 'zzzz'.rjust(15) )
+        self.log += line % ( self.zzxx, self.zzyy, self.zzzz )
+
+    def Fi(self,i,bi):
+        '''Select diagonal field.'''
+        Fi = [0,0,0]
+        Fi[i] = bi
+        return tuple(Fi)
+
+    def Fij(self,i,j,bi,bj):
+        '''Select off-diagonal field.'''
+        Fij = [0,0,0]
+        Fij[i] = bi
+        Fij[j] = bj
+        return tuple(Fij)
+
+    def Mu(self,i):
+        pass
+
+    def Alpha(self,i,j):
+        pass
+
+    def Beta(self,i,j):
+        pass
+
+    def Gamma(self,i,j):
+        pass
+
+class KURTZ_E(KURTZ):
+
+    def __init__(self, E, fstep, units, method):
+        '''Initialize for energy expansion'''
+        self.base_name = 'energy'
+
+        KURTZ.__init__(self, E, fstep, units, method)
+
+    def Mu(self,i,E,f):
+        '''Components of dipole moment (energy expansion).'''
+        try:
+            mu_i=( (-2.0/3.0)*( E[Fi(i,f)] - E[Fi(i,-f)] ) + 
+                   ( E[Fi(i,2*f)] - E[Fi(i,-2*f)] )/12.0 )/abs(f)
+        except KeyError:
+            mu_i=NaN
+
+        return mu_i
+
+    def Alpha(self,i,j,E,f):
+        '''Components of polarizability (energy expansion).'''
+        try:
+            if i==j:
+                alpha_ij=( (5.0/2.0)*E[Fi(0,0)] - (4.0/3.0)*( E[Fi(i,f)] + E[Fi(i,-f)] ) + 
+                           ( E[Fi(i,2*f)] + E[Fi(i,-2*f)] )/12.0 )/abs(f*f)
+            if i!=j:
+                alpha_ij=( ( E[Fij(i,j,2*f,2*f)] - E[Fij(i,j,2*f,-2*f)] - 
+                             E[Fij(i,j,-2*f,2*f)] + E[Fij(i,j,-2*f,-2*f)] )/48.0 -
+                           ( E[Fij(i,j,f,f)] - E[Fij(i,j,f,-f)] -
+                             E[Fij(i,j,-f,f)] + E[Fij(i,j,-f,-f)] )/3.0 )/abs(f*f)
+        except KeyError:
+            alpha_ij=NaN
+
+        return alpha_ij
+
+    def Beta(self,i,j,E,f):
+        '''Components of hyperpolarizability (energy expansion).'''
+        try:
+            # Beta_iii
+            if i==j:
+                beta_ijj=( ( E[Fi(i,f)] - E[Fi(i,-f)] ) -
+                           ( E[Fi(i,2*f)] - E[Fi(i,-2*f)] )/2.0 )/abs(f*f*f)
+            # Beta_ijj
+            if i!=j:
+                beta_ijj=( ( E[Fij(i,j,-f,-f)] - E[Fij(i,j,f,f)] +
+                             E[Fij(i,j,-f,f)] - E[Fij(i,j,f,-f)] )/2.0 +
+                             E[Fi(i,f)] - E[Fi(i,-f)] )/abs(f*f*f)
+        except KeyError:
+            beta_ijj=NaN
+
+        return beta_ijj
+
+    def Gamma(self,i,j,E,f):
+        '''Components of second hyperpolarizability (energy expansion).'''
+        try:
+            # Gamma_iiii
+            if i==j:
+                gamma_iijj=( 4.0*( E[Fi(i,f)] + E[Fi(i,-f)] ) - 6.0*E[Fi(0,0)] -
+                             ( E[Fi(i,2*f)] + E[Fi(i,-2*f)] ) )/abs(f*f*f*f)
+            # Gamma_iijj
+            if i!=j:
+                gamma_iijj=( -4.0*E[Fi(0,0)] - ( E[Fij(i,j,f,f)] + E[Fij(i,j,-f,-f)] +
+                             E[Fij(i,j,f,-f)] + E[Fij(i,j,-f,f)] ) +
+                             2.0*( E[Fi(i,f)] + E[Fi(i,-f)] + E[Fi(j,f)] + E[Fi(j,-f)] ) )/abs(f*f*f*f)
+        except KeyError:
+            gamma_iijj=NaN
+
+        return gamma_iijj
+
+
+class KURTZ_D(KURTZ):
+
+    def __init__(self, D, fstep, units, method):
+        '''Initialize for dipole expansion'''
+        self.base_name = 'dipole'
+
+        KURTZ.__init__(self, D, fstep, units, method)
+
+    def Mu(self,i,D,f):
+        '''Components of dipole moment (dipole expansion).'''
+        try:
+            mu_i=( (2.0/3.0)*( D[Fi(i,f)][i] + D[Fi(i,-f)][i] ) - 
+                   (1.0/6.0)*( D[Fi(i,2*f)][i] + D[Fi(i,-2*f)][i] ) )
+        except KeyError:
+            mu_i=NaN
+
+        return mu_i
+
+    def Alpha(self,i,j,D,f):
+        '''Components of polarizability (dipole expansion).'''
+        try:
+            if i==j:
+                alpha_ij=(  (2.0/3.0)*( D[Fi(i,f)][i] - D[Fi(i,-f)][i] ) -
+                            (1.0/12.0)*( D[Fi(i,2*f)][i] - D[Fi(i,-2*f)][i] ) )/abs(f)
+            if i!=j:
+                alpha_ij=(  (2.0/3.0)*( D[Fi(j,f)][i] - D[Fi(j,-f)][i] ) -
+                            (1.0/12.0)*( D[Fi(j,2*f)][i] - D[Fi(j,-2*f)][i] ) )/abs(f)
+        except KeyError:
+            alpha_ij=NaN
+
+        return alpha_ij
+
+    def Beta(self,i,j,D,f):
+        '''Components of hyperpolarizability (dipole expansion).'''
+        try:
+            # Beta_iii
+            if i==j:
+                beta_ijj=( (1.0/3.0)*( D[Fi(i,2*f)][i] + D[Fi(i,-2*f)][i] -
+                           D[Fi(i,f)][i] - D[Fi(i,-f)][i] ) )/abs(f*f)
+            # Beta_ijj
+            if i!=j:
+                beta_ijj=( (1.0/3.0)*( D[Fi(j,2*f)][i] + D[Fi(j,-2*f)][i] -
+                           D[Fi(j,f)][i] - D[Fi(j,-f)][i] ) )/abs(f*f)
+        except KeyError:
+            beta_ijj=NaN
+
+        return beta_ijj
+
+    def Gamma(self,i,j,D,f):
+        '''Components of second hyperpolarizability (dipole expansion).'''
+        try:
+            # Gamma_iiii
+            if i==j:
+                gamma_iijj=( (1.0/2.0)*( D[Fi(i,2*f)][i] - D[Fi(i,-2*f)][i] ) -
+                             D[Fi(i,f)][i] + D[Fi(i,-f)][i] )/abs(f*f*f)
+            # Gamma_iijj
+            if i!=j:
+                gamma_iijj=( (1.0/2.0)*( D[Fij(i,j,f,f)][i] - D[Fij(i,j,-f,f)][i] +
+                             D[Fij(i,j,f,-f)][i] - D[Fij(i,j,-f,-f)][i] ) -
+                             D[Fi(i,f)][i] + D[Fi(i,-f)][i] )/abs(f*f*f)
+        except KeyError:
+            gamma_iijj=NaN
+
+        return gamma_iijj
+
+#----------------------------------------------------------------------------
+# Property calculation routines (old)
 #----------------------------------------------------------------------------
 
 def fields(i,f):
@@ -1675,7 +2037,7 @@ def CalcKurtzD(D, f, U, Properties, Label):
     Properties['Gv']=Gv
 
     # Prepare data for printout
-    log  = 'Static electric dipole properties (finite field '+Label+' dipole) \n\n'
+    log  = 'Static electric dipole properties (finite field '+Label+' dipole, f=%.4f) \n\n' % f
 
     log += 'Dipole moment [%s]\n\n' % U['u']
     line = 4*U['m']['f'] + '\n\n'
@@ -1799,7 +2161,7 @@ def CalcKurtzE(E, f, U, Properties, Label):
     Properties['Gv']=Gv
 
     # Prepare data for printout
-    log  = 'Static electric dipole properties (finite field '+Label+' energy) \n\n'
+    log  = 'Static electric dipole properties (finite field '+Label+' energy, f=%.4f) \n\n' % f
 
     log += 'Dipole moment [%s]\n\n' % U['u']
     line = 4*U['m']['f'] + '\n\n'
