@@ -996,6 +996,12 @@ class MOLCAS(PARSER):
                             line = FindLine(self.log,'Dipole Moment')
                             dipl = SkipLines(self.log,2).split()
                             self.dipoles['SCF'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                    # ... read mp2 energy and dipole ...
+                    if line.find('MOLCAS executing module MBPT2') !=-1:
+                        if ('MP2' not in self.energies):
+                            self.energies['MP2']={}
+                        if (field not in self.energies['MP2']):
+                            self.energies['MP2'][field]= float64(FindLine(self.log,'Total energy').split()[-2])
                     # ... read rasscf energy and dipole ...
                     if line.find('MOLCAS executing module RASSCF') !=-1:
                         if ('RASSCF' not in self.energies):
