@@ -155,11 +155,11 @@ def Main(argv):
         if calculate:
 
             if gamess:
-                data[f]=GAMESS(f, fstep,units,'gamess')
+                data[f]=GAMESS(f, 1, units, 'gamess')
             if molcas:
-                data[f]=MOLCAS(f,-fstep,units,'molcas')
+                data[f]=MOLCAS(f, -1, units, 'molcas')
             if gaussian:
-                data[f]=GAUSSIAN(f,-fstep,units,'gaussian')
+                data[f]=GAUSSIAN(f, -1, units, 'gaussian')
 
         # Prepare inputs
         else:
@@ -178,10 +178,10 @@ def Main(argv):
 class PARSER:
     """A common parser routines"""
 
-    def __init__(self, logpath, fstep, units, pkg):
+    def __init__(self, logpath, sign, units, pkg):
         # initialize
         self.logpath = logpath
-        self.fstep = fstep
+        self.sign = sign
         self.units = units
         self.pkg = pkg
         self.ext = "\.log$"
@@ -280,7 +280,7 @@ class PARSER:
     def SetBaseField(self,field):
         if ((self.fstep == 0 and abs(max(field)) > 0) or
             (abs(max(field)) > 0 and abs(max(field)) < self.fstep)):
-            self.fstep = abs(max(field))
+            self.fstep = self.sign*abs(max(field))
 
     def SortFields(self,fields):
 
@@ -628,7 +628,7 @@ class GAMESS(PARSER):
                     # ... read scf interaction energy terms ...
                     if self.Nmer(conf_id) >= 2:
                         self.ReadScfTotTerms(conf_id,conf_no,field)
-                    if self.Nmer(conf_id) == len(conf_id) :
+                    if self.Nmer(conf_id) == len(conf_id) and self.Nmer(conf_id) >= 3:
                         self.ReadScfMnbTerms('n-body',conf_no,field)
 
                     # ... read scf dipole ...
@@ -646,7 +646,8 @@ class GAMESS(PARSER):
                     # ... read mp2 interaction energy terms ...
                     if self.mplevl == 2 and self.Nmer(conf_id) >= 2:
                         self.ReadMp2TotTerms(conf_id,conf_no,field)
-                    if self.mplevl == 2 and self.Nmer(conf_id) == len(conf_id) :
+                    if ( self.mplevl == 2 and self.Nmer(conf_id) == len(conf_id) 
+                         and self.Nmer(conf_id) >= 3 ): 
                         self.ReadMp2MnbTerms('n-body',conf_no,field)
 
                     if self.mplevl == 2 and self.mp2prp == 't':
@@ -1130,9 +1131,12 @@ class GAUSSIAN(PARSER):
         self.log=open(filename)
 
         # Read control options
+        puhf=0
         mp2=0
+        pmp2=0
         mp2dip=0
         mp3=0
+        pmp3=0
         mp4=0
         ccsd=0
         ccsdt=0
@@ -1141,16 +1145,21 @@ class GAUSSIAN(PARSER):
         line=SkipLines(self.log,2)
         if line.find('MP2') !=-1:
             mp2=1
+        if line.find('UMP2') !=-1:
+            puhf=1
+            pmp2=1
         if line.find('CCSD') !=-1:
             mp2=1
             mp2dip=0
             mp3=1
             mp4=1
             ccsd=1
-            if line.find('CCSD(T)') !=-1:
-                ccsdt=1
-            else:
-                ccsdt=0
+        if line.find('CCSD(T)') !=-1:
+            ccsdt=1
+        if line.find('UCCSD') !=-1:
+            puhf=1
+            pmp2=1
+            pmp3=1
 
         # available dipoles
         if mp2==1:
@@ -1162,10 +1171,16 @@ class GAUSSIAN(PARSER):
         # setup dictionaries
         if 'SCF' not in self.energies:
             self.energies['SCF']={}
+        if puhf==1 and 'PUHF' not in self.energies:
+            self.energies['PUHF']={}
         if mp2==1 and 'MP2' not in self.energies:
             self.energies['MP2']={}
+        if pmp2==1 and 'PMP2' not in self.energies:
+            self.energies['PMP2']={}
         if mp3==1 and 'MP3' not in self.energies:
             self.energies['MP3']={}
+        if pmp3==1 and 'PMP3' not in self.energies:
+            self.energies['PMP3']={}
         if mp4==1 and 'MP4(SDQ)' not in self.energies:
             self.energies['MP4(SDQ)']={}
         if ccsd==1 and 'CCSD' not in self.energies:
@@ -1204,6 +1219,21 @@ class GAUSSIAN(PARSER):
             line = FindLine(self.log,'Cluster Energy with triples')
             ECCSDT = float64(line.split()[-1])
 
+        # ... read PUHF energy ...
+        if puhf==1:
+            line = FindLine(self.log,'PUHF Energy')
+            EPUHF = float64(line.split()[-1])
+
+        # ... read PMP2 energy ...
+        if pmp2==1:
+            line = FindLine(self.log,'PMP2-0 Energy')
+            EPMP2 = float64(line.split()[-1])
+
+        # ... read PMP3 energy ...
+        if pmp3==1:
+            line = FindLine(self.log,'PMP3-0 Energy')
+            EPMP3 = float64(line.split()[-1])
+
         # ... read applied external field ...
         line = FindLine(self.log,'External E-field')
         line = SkipLines(self.log,1).split()
@@ -1214,10 +1244,16 @@ class GAUSSIAN(PARSER):
 
         if field not in self.energies['SCF']:
             self.energies['SCF'][field]=ESCF
+        if puhf==1 and field not in self.energies['PUHF']:
+            self.energies['PUHF'][field]=EPUHF
         if mp2==1 and field not in self.energies['MP2']:
             self.energies['MP2'][field]=EMP2
+        if pmp2==1 and field not in self.energies['PMP2']:
+            self.energies['PMP2'][field]=EPMP2
         if mp3==1 and field not in self.energies['MP3']:
             self.energies['MP3'][field]=EMP3
+        if pmp3==1 and field not in self.energies['PMP3']:
+            self.energies['PMP3'][field]=EPMP3
         if mp4==1 and field not in self.energies['MP4(SDQ)']:
             self.energies['MP4(SDQ)'][field]=EMP4
         if ccsd==1 and field not in self.energies['CCSD']:
