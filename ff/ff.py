@@ -240,11 +240,11 @@ class PARSER:
                     self.properties['E'][e][i]={}
                     label = e + " C(" + i + ") energy"
                     self.properties['E'][e][i]['FF'] = KURTZ_E(self.energies[e][i], self.fstep, self.units, label)
-                    self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], label)
+                    self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], -1, label)
             else:
                 label = e + " energy"
                 self.properties['E'][e]['FF'] = KURTZ_E(self.energies[e], self.fstep, self.units, label)
-                self.properties['E'][e]['RR'] = ROMBERG(self.energies[e], label)
+                self.properties['E'][e]['RR'] = ROMBERG(self.energies[e], -1, label)
 
         for d in self.dipoles.keys():
 
@@ -256,16 +256,16 @@ class PARSER:
                     label = d + " C(" + i + ") dipole"
                     self.properties['D'][d][i]['FF'] = KURTZ_D(self.dipoles[d][i], self.fstep, self.units, label)
                     self.properties['D'][d][i]['RR'] = {
-                        'X': ROMBERG(self.SelectDipoles(self.dipoles[d][i],0), label+" (x component)"),
-                        'Y': ROMBERG(self.SelectDipoles(self.dipoles[d][i],1), label+" (y component)"),
-                        'Z': ROMBERG(self.SelectDipoles(self.dipoles[d][i],2), label+" (z component)") }
+                        'X': ROMBERG(self.SelectDipoles(self.dipoles[d][i],0), 1, label+" (x component)"),
+                        'Y': ROMBERG(self.SelectDipoles(self.dipoles[d][i],1), 1, label+" (y component)"),
+                        'Z': ROMBERG(self.SelectDipoles(self.dipoles[d][i],2), 1, label+" (z component)") }
             else:
                 label = d + " dipole"
                 self.properties['D'][d]['FF'] = KURTZ_D(self.dipoles[d], self.fstep, self.units, label)
                 self.properties['D'][d]['RR'] = {
-                    'X': ROMBERG(self.SelectDipoles(self.dipoles[d],0), label+" (x component)"),
-                    'Y': ROMBERG(self.SelectDipoles(self.dipoles[d],1), label+" (y component)"),
-                    'Z': ROMBERG(self.SelectDipoles(self.dipoles[d],2), label+" (z component)") }
+                    'X': ROMBERG(self.SelectDipoles(self.dipoles[d],0), 1, label+" (x component)"),
+                    'Y': ROMBERG(self.SelectDipoles(self.dipoles[d],1), 1, label+" (y component)"),
+                    'Z': ROMBERG(self.SelectDipoles(self.dipoles[d],2), 1, label+" (z component)") }
 
     def SelectDipoles(self,D,axis):
         """Return selected elements of dipole moments for RR"""
@@ -280,7 +280,7 @@ class PARSER:
     def SetBaseField(self,field):
         if ((self.fstep == 0 and abs(max(field)) > 0) or
             (abs(max(field)) > 0 and abs(max(field)) < self.fstep)):
-            self.fstep = self.sign*abs(max(field))
+            self.fstep = abs(max(field))
 
     def SortFields(self,fields):
 
@@ -537,7 +537,9 @@ class GAMESS(PARSER):
                 line = line.split()
 
                 # ... set field label ...
-                field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
+                field = ( round(float(line[-3]),9),
+                          round(float(line[-2]),9),
+                          round(float(line[-1]),9) )
 
                 # ... update base field ...
                 self.SetBaseField(field)
@@ -549,7 +551,9 @@ class GAMESS(PARSER):
             if line.find('ELECTRIC FIELD') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = ( round(float(line[-3]),4), round(float(line[-2]),4), round(float(line[-1]),4) )
+                field = ( round(float(line[-3]),9),
+                          round(float(line[-2]),9),
+                          round(float(line[-1]),9) )
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read scf energy ...
@@ -599,7 +603,9 @@ class GAMESS(PARSER):
             if line !=-1:
                 l = line.split()
                 # ... set field label ...
-                field = ( round(float(l[-3]),4), round(float(l[-2]),4), round(float(l[-1]),4) )
+                field = ( round(float(l[-3]),9),
+                          round(float(l[-2]),9),
+                          round(float(l[-1]),9) )
                 # ... update base field ...
                 self.SetBaseField(field)
             else:
@@ -977,7 +983,9 @@ class MOLCAS(PARSER):
             if line.find('FFPT    DIPO    COMP') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = ( round(float(line[-5]),4), round(float(line[-3]),4), round(float(line[-1]),4) )
+                field = ( self.sign*round(float(line[-5]),9),
+                          self.sign*round(float(line[-3]),9),
+                          self.sign*round(float(line[-1]),9) )
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read all energies for this field ...
@@ -1237,7 +1245,9 @@ class GAUSSIAN(PARSER):
         # ... read applied external field ...
         line = FindLine(self.log,'External E-field')
         line = SkipLines(self.log,1).split()
-        field = ( round(float(line[1]),4), round(float(line[2]),4), round(float(line[3]),4) )
+        field = ( self.sign*round(float(line[1]),9), 
+                  self.sign*round(float(line[2]),9),
+                  self.sign*round(float(line[3]),9) )
 
         # ... update base field ...
         self.SetBaseField(field)
@@ -1348,11 +1358,12 @@ def FF25Input(energies, fstep):
 class ROMBERG:
     """Generalized romberg analysis"""
 
-    def __init__(self, energies, label):
+    def __init__(self, energies, sign, label):
         """Expects energies cast in a following dictionary:
            energies{ (fx, fy, fz): value, ... }
         """
         self.energies = energies
+        self.sign = sign # -1 for energies and +1 for dipoles
         self.label = label
         self.fields = array(energies.keys(),dtype=float64)
         self.max_field = self.fields.max(axis=0)
@@ -1510,7 +1521,7 @@ class ROMBERG:
                    ) / ( (self.a**2)*(self.a**2-1)*(self.h*self.a**k)**4 )
 
         # ... return ...
-        return D
+        return self.sign*D
 
 #----------------------------------------------------------------------------
 # Property calculation routines
