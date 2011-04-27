@@ -897,7 +897,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
 
         # write input files
         for f in self.frange:
-            filename = self.data.replace('.xyz','')+'_F%2d_' % f
+            filename = self.data.replace('.xyz','')+'_%.4f_F%2d_' % (self.fstep, f)
             filename = filename.replace(' ','0')
 
             # Prepare FFPT
@@ -1100,7 +1100,7 @@ gaussian ffield
 
         # write input files
         for f in self.frange:
-            filename = self.data.replace('.xyz','')+'_F%2d_' % f
+            filename = self.data.replace('.xyz','')+'_%.4f_F%2d_' % (self.fstep, f)
             filename = filename.replace(' ','0')
             ffield = self.Fields(f,self.fstep)+fieldtail
             finput = self.tmpl.substitute(data=xyz, field=ffield, chk=filename+'.chk')
@@ -1128,7 +1128,8 @@ class GAUSSIAN(PARSER):
             # prepare formated checkpoints
             fchk = chk.replace('chk','fchk')
             if not os.path.exists(fchk):
-                Run(os.environ['g09root']+'/g09/formchk', chk)
+                print "Using %s to format checkpoints" % (os.environ['g09root']+'/g09/formchk')
+                Run(os.environ['g09root']+'/g09/formchk', chk + ' ' + fchk)
 
             # parse current logfile
             self.ParseFile(fchk)
@@ -1611,12 +1612,14 @@ class KURTZ:
         self.Bz = Bz = (3.0/5.0)*B.sum(axis=0)[2]
         # projection to the dipole moment vector
         self.Bm = Bm = (3.0/5.0)*dot(M,B.sum(axis=0))/Mv
+        self.Bv = Bv = (1.0/5.0)*sqrt(dot(B.sum(axis=0),B.sum(axis=0)))
 
         self.properties['B'] = B
         self.properties['Bx'] = Bx
         self.properties['By'] = By
         self.properties['Bz'] = Bz
         self.properties['Bm'] = Bm
+        self.properties['Bv'] = Bv
 
         # second hyperpolarizability
         self.xxxx = xxxx = self.Gamma(0,0, P, f)
@@ -1668,8 +1671,9 @@ class KURTZ:
         self.log += line % ( self.xyy, self.yyy, self.zyy )
         self.log += '%15s %15s %15s\n' % ( 'xzz'.rjust(15), 'yzz'.rjust(15), 'zzz'.rjust(15) )
         self.log += line % ( self.xzz, self.yzz, self.zzz )
-        self.log += '%15s %15s %15s\n' % ( '<beta_x>'.rjust(15), '<beta_y>'.rjust(15), '<beta_z>'.rjust(15) )
-        self.log += line % ( self.Bx, self.By, self.Bz )
+        line = 4*self.units['b']['f'] + '\n\n'
+        self.log += '%15s %15s %15s %15s\n' % ( '<beta_x>'.rjust(15), '<beta_y>'.rjust(15), '<beta_z>'.rjust(15), '<beta>'.rjust(15) )
+        self.log += line % ( self.Bx, self.By, self.Bz, self.Bv )
 
         self.log += 'Second Hyperpolarizability [%s]\n\n' % self.units['u']
         line = 4*self.units['g']['f'] + '\n\n'
