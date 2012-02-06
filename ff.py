@@ -19,6 +19,8 @@ Options:
   -u, --units      set units; chose from: esu, si, asi 
                    (si multiplied by electric permittivity of free space),
                    or au which is the default
+  --print-data     if '-c' option is set, the script prints also the extracted
+                   energies and dipole moments (usefull for testing purposes)
 
 Fields selection:
   --fields 25         25 fields sufficient for <g> (enabled by default)
@@ -82,6 +84,7 @@ def Main(argv):
     # Set up defaults
     fstep = 0.001
     calculate = 0
+    show = 0
     gamess = 0
     gaussian = 0
     molcas = 0
@@ -99,6 +102,7 @@ def Main(argv):
                                          "fields=",
                                          "print-fields",
                                          "calculate",
+                                         "print-data",
                                          "gamess",
                                          "gaussian",
                                          "molcas",
@@ -145,6 +149,8 @@ def Main(argv):
                 print "Unrecognized fields selection ... assuming the default."
         elif opt in ("--print-fields"):
             print INPUTS(None, fstep, frange, grr).PrintFields()
+        elif opt in ("--print-data"):
+            show=1
 
     # Parse each data file (with xyz coords) or dir (with the results)
     data_files = args
@@ -160,6 +166,8 @@ def Main(argv):
                 data[f]=MOLCAS(f, -1, units, 'molcas')
             if gaussian:
                 data[f]=GAUSSIAN(f, -1, units, 'gaussian')
+            if show:
+                data[f].PrintData()
 
         # Prepare inputs
         else:
@@ -171,6 +179,7 @@ def Main(argv):
                 MOLCAS_INPUTS(f,fstep,frange,grr)
             if native:
                 MOLCAS_NATIVE_INPUTS(f,fstep,frange,grr)
+
 
 #----------------------------------------------------------------------------
 # Common parser routines
@@ -285,13 +294,26 @@ class PARSER:
     def SortFields(self,fields):
 
         sfields = sorted( sorted( sorted( fields,
+            lambda a,b: cmp(a[2], b[2]) ),
             lambda a,b: cmp(a[0], b[0]) ),
-            lambda a,b: cmp(a[1], b[1]) ),
-            lambda a,b: cmp(a[2], b[2]) )
+            lambda a,b: cmp(a[1], b[1]) )
 
         nfields=(len(sfields)-1)/3/2
 
         return sfields
+
+    def PrintData(self):
+        '''Punch extracted energies and dipoles'''
+
+        for e in self.energies.keys():
+            print "\n%s energies:" % (e)
+            print 55*"-"
+
+            #for f in sorted( self.energies[e].keys(), key=self.energies[e].get ):
+            for f in sorted( self.energies[e].keys() ):
+                row='E(%7.4f,%7.4f,%7.4f) = ' % f
+                row+='%26.15f' % self.energies[e][f]
+                print row
 
 #----------------------------------------------------------------------------
 # Common input template routines
@@ -499,6 +521,9 @@ class GAMESS(PARSER):
                 if not term_ok:
                     print "Warning: file ", filename, " did not finished properly!"
 
+            except AttributeError:
+                print "Attribute error. Check for junk or redundand log files."
+                sys.exit(1)
             except:
                 print "Unexpected error:", sys.exc_info()[0]
                 raise
@@ -528,7 +553,7 @@ class GAMESS(PARSER):
                 if self.mplevl == 2:
                     EnKey = 'MP2'
                 elif self.cctyp != 'NONE':
-                    EnKey = cctyp
+                    EnKey = self.cctyp
                 else:
                     EnKey = 'SCF'
                 if EnKey not in self.energies:
@@ -569,7 +594,7 @@ class GAMESS(PARSER):
                     line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
                     line = SkipLines(self.log,6)
                     self.dipoles['SCF'][field] = array(line.split()[:3],dtype=float64)/self.au2d
-                # ... read scf energy ...
+                # ... read mp2 energy ...
                 if self.mplevl == 2:
                     if 'MP2' not in self.energies:
                         self.energies['MP2']={}
@@ -583,6 +608,21 @@ class GAMESS(PARSER):
                         line = FindLine(self.log,'ELECTROSTATIC MOMENTS')
                         line = SkipLines(self.log,6)
                         self.dipoles['MP2'][field] = array(line.split()[:3],dtype=float64)/self.au2d
+                # ... read cc energy ...
+                if self.cctyp != 'NONE':
+                    if 'MP2' not in self.energies:
+                        self.energies['MP2']={}
+                    if field not in self.energies['MP2']:
+                        self.energies['MP2'][field]= float64(FindLine(self.log,'MBPT(2) ENERGY:').split()[-3])
+                    if 'CCSD' not in self.energies:
+                        self.energies['CCSD']={}
+                    if field not in self.energies['CCSD']:
+                        self.energies['CCSD'][field]= float64(FindLine(self.log,'CCSD    ENERGY:').split()[-3])
+                if self.cctyp == 'CCSD(T)':
+                    if 'CCSD(T)' not in self.energies:
+                        self.energies['CCSD(T)']={}
+                    if field not in self.energies['CCSD(T)']:
+                        self.energies['CCSD(T)'][field]= float64(FindLine(self.log,'CCSD(T) ENERGY:').split()[-3])
 
         return termination_code
 
