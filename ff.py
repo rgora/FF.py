@@ -23,10 +23,12 @@ Options:
                    energies and dipole moments (usefull for testing purposes)
 
 Fields selection:
-  --fields 25         25 fields sufficient for <g> (enabled by default)
-           13         13 fields sufficient for diagonal components
-           x          5 fields along x (y or z) axis for selected longitudinal components
-
+  --fields 25         25 fields sufficient for <g> (5pt FF formulas, enabled by default)
+           13         13 fields sufficient for diagonal components (5pt)
+           5x          5 fields along x (y or z) axis for selected longitudinal components (5pt)
+           55         55 fields sufficient for <g> (7pt FF formulas)
+           19         19 fields sufficient for diagonal components (7pt)
+           7x          7 fields along x (y or z) axis for selected longitudinal components (7pt)
            GR[n,a,x]  Use for Generalized Romberg: n - the number of iterations
                                                    a - the quotient (e.g. 2 for RR)
                                                    x - the axis (0,1,2 for x,y or z)
@@ -84,6 +86,7 @@ def Main(argv):
     # Set up defaults
     fstep = 0.001
     calculate = 0
+    density = 0
     show = 0
     gamess = 0
     gaussian = 0
@@ -95,13 +98,14 @@ def Main(argv):
 
     # Parse commandline
     try:
-        opts, args = getopt.getopt(argv, "hu:f:cgsmn",
+        opts, args = getopt.getopt(argv, "hu:f:cdgsmn",
                                         ["help",
                                          "units=",
                                          "base-field=",
                                          "fields=",
                                          "print-fields",
                                          "calculate",
+                                         "density",
                                          "print-data",
                                          "gamess",
                                          "gaussian",
@@ -136,12 +140,22 @@ def Main(argv):
                 frange = range(25)
             elif arg == '13':
                 frange = range(13)
-            elif arg == 'x':
+            elif arg == '5x':
                 frange = [ 0, 1, 2, 7, 8]
-            elif arg == 'y':
+            elif arg == '5y':
                 frange = [ 0, 3, 4, 9,10]
-            elif arg == 'z':
+            elif arg == '5z':
                 frange = [ 0, 5, 6,11,12]
+            elif arg == '55':
+                frange = range(55)
+            elif arg == '19':
+                frange = range(19)
+            elif arg == '7x':
+                frange = [ 0, 1, 2, 7, 8,13,14]
+            elif arg == '7y':
+                frange = [ 0, 3, 4, 9,10,15,16]
+            elif arg == '7z':
+                frange = [ 0, 5, 6,11,12,17,18]
             elif arg[:2] == 'GR':
                 grr = arg[3:-1].split(',')
                 grr = ( int(grr[0]), float(grr[1]), int(grr[2]) )
@@ -243,16 +257,23 @@ class PARSER:
         for e in self.energies.keys():
 
             self.properties['E'][e]={}
+            npts = int(2*max(max(self.energies[e].keys()))/self.fstep+1)
 
             if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.energies[e].keys():
                     self.properties['E'][e][i]={}
                     label = e + " C(" + i + ") energy"
-                    self.properties['E'][e][i]['FF'] = KURTZ_E(self.energies[e][i], self.fstep, self.units, label)
+                    if npts >= 5:
+                        self.properties['E'][e][i]['FF5'] = FDIFF_E_V(self.energies[e][i], self.fstep, self.units, label+" (5pt)")
+                    if npts >= 7:
+                        self.properties['E'][e][i]['FF7'] = FDIFF_E_VII(self.energies[e][i], self.fstep, self.units, label+" (7pt)")
                     self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], -1, label)
             else:
                 label = e + " energy"
-                self.properties['E'][e]['FF'] = KURTZ_E(self.energies[e], self.fstep, self.units, label)
+                if npts >= 5:
+                    self.properties['E'][e]['FF5'] = FDIFF_E_V(self.energies[e], self.fstep, self.units, label+" (5pt)")
+                if npts >= 7:
+                    self.properties['E'][e]['FF7'] = FDIFF_E_VII(self.energies[e], self.fstep, self.units, label+" (7pt)")
                 self.properties['E'][e]['RR'] = ROMBERG(self.energies[e], -1, label)
 
         for d in self.dipoles.keys():
@@ -263,14 +284,14 @@ class PARSER:
                 for i in self.dipoles[d].keys():
                     self.properties['D'][d][i]={}
                     label = d + " C(" + i + ") dipole"
-                    self.properties['D'][d][i]['FF'] = KURTZ_D(self.dipoles[d][i], self.fstep, self.units, label)
+                    self.properties['D'][d][i]['FF'] = FDIFF_D_V(self.dipoles[d][i], self.fstep, self.units, label)
                     self.properties['D'][d][i]['RR'] = {
                         'X': ROMBERG(self.SelectDipoles(self.dipoles[d][i],0), 1, label+" (x component)"),
                         'Y': ROMBERG(self.SelectDipoles(self.dipoles[d][i],1), 1, label+" (y component)"),
                         'Z': ROMBERG(self.SelectDipoles(self.dipoles[d][i],2), 1, label+" (z component)") }
             else:
                 label = d + " dipole"
-                self.properties['D'][d]['FF'] = KURTZ_D(self.dipoles[d], self.fstep, self.units, label)
+                self.properties['D'][d]['FF'] = FDIFF_D_V(self.dipoles[d], self.fstep, self.units, label)
                 self.properties['D'][d]['RR'] = {
                     'X': ROMBERG(self.SelectDipoles(self.dipoles[d],0), 1, label+" (x component)"),
                     'Y': ROMBERG(self.SelectDipoles(self.dipoles[d],1), 1, label+" (y component)"),
@@ -359,7 +380,7 @@ class INPUTS:
     def Fields(self,i,f):
         '''Set fields for GR or FF calculations'''
 
-        # grr(iter,a,axis)
+        # Generalized Romberg formulas: grr(iter,a,axis)
         if self.grr[0] > 0:
 
             np = self.grr[0]
@@ -373,6 +394,65 @@ class INPUTS:
             for p in range(np):
                 fields.append( '%7.4f %7.4f %7.4f' % self.RRfield(p,a,-f,axis) )
 
+        # 7 point formulas
+        elif len(self.frange) == 55 or len(self.frange) == 19 or len(self.frange) == 7 :
+            fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,- 0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  2*f),
+                    '%7.4f %7.4f %7.4f'  % (-3*f,  0.0,- 0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 3*f,  0.0,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0, -3*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  3*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -3*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  3*f),
+                    '%7.4f %7.4f %7.4f'  % (  -f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,   -f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,    f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,   -f),
+                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,   -f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,    f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,    f),
+                    '%7.4f %7.4f %7.4f'  % (  -f, -2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f, -2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (   f,  2*f,  0.0),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0, -2*f),
+                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  2*f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0, -2*f),
+                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f, -2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f, -2*f),
+                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  2*f)]
+
+        # 5 point formulas
         else:
             fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
                     '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
@@ -1568,7 +1648,7 @@ class ROMBERG:
 # Property calculation routines
 #----------------------------------------------------------------------------
 
-class KURTZ:
+class FDIFF:
 
     def __init__(self, base_property, fstep, units, method):
         self.base_property = base_property
@@ -1750,13 +1830,13 @@ class KURTZ:
     def Gamma(self,i,j):
         pass
 
-class KURTZ_E(KURTZ):
+class FDIFF_E_V(FDIFF):
 
     def __init__(self, E, fstep, units, method):
         '''Initialize for energy expansion'''
         self.base_name = 'energy'
 
-        KURTZ.__init__(self, E, fstep, units, method)
+        FDIFF.__init__(self, E, fstep, units, method)
 
     def Mu(self,i,E,f):
         '''Components of dipole moment (energy expansion).'''
@@ -1818,14 +1898,109 @@ class KURTZ_E(KURTZ):
 
         return gamma_iijj
 
+class FDIFF_E_VII(FDIFF):
 
-class KURTZ_D(KURTZ):
+    def __init__(self, E, fstep, units, method):
+        '''Initialize for energy expansion'''
+        self.base_name = 'energy'
+
+        FDIFF.__init__(self, E, fstep, units, method)
+
+    def Mu(self,i,E,f):
+        '''Components of dipole moment (energy expansion).'''
+        try:
+            mu_i= -( E[Fi(i,3*f)] - E[Fi(i,-3*f)] -
+                     9.0*(E[Fi(i,2*f)] - E[Fi(i,-2*f)] +
+                          5.0*(E[Fi(i,-f)] - E[Fi(i,f)]) ) ) / (60.0*abs(f))
+        except KeyError:
+            mu_i=NaN
+
+        return mu_i
+
+    def Alpha(self,i,j,E,f):
+        '''Components of polarizability (energy expansion).'''
+        try:
+            if i==j:
+                alpha_ij= -( 2.0*( E[Fi(i,3*f)] + E[Fi(i,-3*f)] ) -
+                             27.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] -
+                                    10.0*( E[Fi(i,f)] + E[Fi(i,-f)] )) -
+                             490.0*E[Fi(0,0)] ) / (180.0*abs(f*f))
+            if i!=j:
+                alpha_ij= -( 12.0*( E[Fij(i,j,3*f,f)] + E[Fij(i,j,f,3*f)] -
+                                    E[Fij(i,j,3*f,0)] - E[Fij(i,j,0,3*f)] +
+                                    E[Fij(i,j,-2*f,0)] + E[Fij(i,j,0,-2*f)] ) +
+                             480.0*E[Fij(i,j,f,f)] +
+                             330.0*( E[Fi(0,0)] - E[Fij(i,j,0,f)] - E[Fij(i,j,f,0)] ) +
+                             160.0*E[Fij(i,j,-f,-f)] -
+                             105.0*( E[Fij(i,j,f,2*f)] + E[Fij(i,j,2*f,f)] ) -
+                             15.0*( E[Fij(i,j,-2*f,-f)] + E[Fij(i,j,-f,-2*f)] ) +
+                             90.0*( E[Fij(i,j,2*f,0)] + E[Fij(i,j,0,2*f)] -
+                                    E[Fij(i,j,-f,0)] - E[Fij(i,j,0,-f)] ) -
+                             60.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,-f,f)] ) +
+                              5.0*( E[Fij(i,j,2*f,-f)] + E[Fij(i,j,-f,2*f)] ) +
+                              3.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,f,-2*f)] ) +
+                              10.0*E[Fij(i,j,2*f,2*f)] ) / (180.0*abs(f*f))
+        except KeyError:
+            alpha_ij=NaN
+
+        return alpha_ij
+
+    def Beta(self,i,j,E,f):
+        '''Components of hyperpolarizability (energy expansion).'''
+        try:
+            # Beta_iii
+            if i==j:
+                beta_ijj= -( E[Fi(i,-3*f)] - E[Fi(i,3*f)] +
+                             8.0*( E[Fi(i,2*f)] - E[Fi(i,-2*f)] ) -
+                             13.0*( E[Fi(i,f)] - E[Fi(i,-f)] ) ) / (8.0*abs(f*f*f))
+            # Beta_ijj
+            if i!=j:
+                beta_ijj= -( E[Fij(i,j,-f,2*f)] + E[Fij(i,j,-f,-2*f)] -
+                             E[Fij(i,j,f,2*f)] - E[Fij(i,j,f,-2*f)] +
+                             2.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,-2*f,-f)] -
+                                   E[Fij(i,j,2*f,f)] - E[Fij(i,j,2*f,-f)] ) +
+                             4.0*( E[Fij(i,j,2*f,0)] - E[Fij(i,j,-2*f,0)] ) +
+                             20.0*( E[Fij(i,j,f,f)] + E[Fij(i,j,f,-f)] -
+                                    E[Fij(i,j,-f,f)] - E[Fij(i,j,-f,-f)] ) -
+                             38.0*( E[Fij(i,j,f,0)] - E[Fij(i,j,-f,0)] ) ) / (24.0*abs(f*f*f))
+        except KeyError:
+            beta_ijj=NaN
+
+        return beta_ijj
+
+    def Gamma(self,i,j,E,f):
+        '''Components of second hyperpolarizability (energy expansion).'''
+        try:
+            # Gamma_iiii
+            if i==j:
+                gamma_iijj= -( 56.0*E[Fi(0,0)] - E[Fi(i,3*f)] - E[Fi(i,-3*f)] +
+                               12.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] ) -
+                               39.0*( E[Fi(i,f)] + E[Fi(i,-f)] ) ) / (6.0*abs(f*f*f*f))
+            # Gamma_iijj
+            if i!=j:
+                gamma_iijj= -( 72.0*E[Fi(0,0)] - E[Fij(i,j,-2*f,-f)] - E[Fij(i,j,-f,-2*f)] -
+                               E[Fij(i,j,-f,2*f)] - E[Fij(i,j,f,-2*f)] -
+                               E[Fij(i,j,f,2*f)] - E[Fij(i,j,2*f,-f)] -
+                               E[Fij(i,j,2*f,f)] - E[Fij(i,j,-2*f,f)] +
+                               2.0*( E[Fij(i,j,0,2*f)] + E[Fij(i,j,2*f,0)] +
+                                     E[Fij(i,j,-2*f,0)] + E[Fij(i,j,0,-2*f)] ) +
+                               20.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,f,f)] +
+                                      E[Fij(i,j,-f,-f)] + E[Fij(i,j,-f,f)] ) -
+                               38.0*( E[Fij(i,j,-f,0)] + E[Fij(i,j,0,-f)] +
+                                      E[Fij(i,j,0,f)] + E[Fij(i,j,f,0)] ) ) / (12.0*abs(f*f*f*f))
+        except KeyError:
+            gamma_iijj=NaN
+
+        return gamma_iijj
+
+
+class FDIFF_D_V(FDIFF):
 
     def __init__(self, D, fstep, units, method):
         '''Initialize for dipole expansion'''
         self.base_name = 'dipole'
 
-        KURTZ.__init__(self, D, fstep, units, method)
+        FDIFF.__init__(self, D, fstep, units, method)
 
     def Mu(self,i,D,f):
         '''Components of dipole moment (dipole expansion).'''
