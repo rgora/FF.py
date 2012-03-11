@@ -135,6 +135,8 @@ def Main(argv):
             native=1
         elif opt in ("-c", "--calculate"):
             calculate=1
+        elif opt in ("-d", "--density"):
+            density=1
         elif opt in ("--fields="):
             if arg == '25':
                 frange = range(25)
@@ -175,11 +177,11 @@ def Main(argv):
         if calculate:
 
             if gamess:
-                data[f]=GAMESS(f, 1, units, 'gamess')
+                data[f]=GAMESS(f, 1, units, 'gamess', density)
             if molcas:
-                data[f]=MOLCAS(f, -1, units, 'molcas')
+                data[f]=MOLCAS(f, -1, units, 'molcas', density)
             if gaussian:
-                data[f]=GAUSSIAN(f, -1, units, 'gaussian')
+                data[f]=GAUSSIAN(f, -1, units, 'gaussian', density)
             if show:
                 data[f].PrintData()
 
@@ -201,16 +203,18 @@ def Main(argv):
 class PARSER:
     """A common parser routines"""
 
-    def __init__(self, logpath, sign, units, pkg):
+    def __init__(self, logpath, sign, units, pkg, density):
         # initialize
         self.logpath = logpath
         self.sign = sign
         self.units = units
         self.pkg = pkg
+        self.density = density
         self.ext = "\.log$"
         # input data
         self.energies = {}
         self.dipoles = {}
+        self.densities = {}
         # results
         self.properties = {'E':{}, 'D':{}}
         # useful regexp's
@@ -296,6 +300,10 @@ class PARSER:
                     'X': ROMBERG(self.SelectDipoles(self.dipoles[d],0), 1, label+" (x component)"),
                     'Y': ROMBERG(self.SelectDipoles(self.dipoles[d],1), 1, label+" (y component)"),
                     'Z': ROMBERG(self.SelectDipoles(self.dipoles[d],2), 1, label+" (z component)") }
+
+        if self.pkg == 'gaussian' and self.density == 1:
+            FDIFF_DD(self.densities, self.fstep, self.units, self.cubedata)
+
 
     def SelectDipoles(self,D,axis):
         """Return selected elements of dipole moments for RR"""
@@ -1254,6 +1262,30 @@ class GAUSSIAN(PARSER):
             # parse current logfile
             self.ParseFile(fchk)
 
+        if self.density == 1:
+
+            for chk in logfiles:
+
+                # ... read applied external field ...
+                fchk = chk.replace('chk','fchk')
+                if os.path.exists(fchk):
+                    log=open(fchk)
+                    line = FindLine(log,'External E-field')
+                    line = SkipLines(log,1).split()
+                    field = ( self.sign*round(float(line[1]),9), 
+                              self.sign*round(float(line[2]),9),
+                              self.sign*round(float(line[3]),9) )
+
+                # parse current cube file
+                cubefile = chk.replace('chk','cube')
+                if os.path.exists(cubefile):
+                    t = CUBE(cubefile)
+                    self.densities[field]=t.data
+                    #t.writeCubeFile(chk.replace('chk','cube2'))
+                if field == (0,0,0):
+                    t.data = None
+                    self.cubedata=t
+
     def ParseFile(self,filename):
         """Read g09 energies and dipoles for this system."""
 
@@ -1498,26 +1530,31 @@ class ROMBERG:
             self.romberg = abs(self.fields.sum(axis=0)[self.axis]) <= 1.0e-10
 
             if self.romberg:
-                # setup fields
-                self.fields = self.fields[:,self.axis]
-                self.fields.sort(axis=0)
 
-                # n: number steps; h: step size; a: quotient;
-                self.n = (self.fields.size-1)/2
-                self.h = self.fields[self.n+1:][0]
-                self.a = self.fields[0] / self.fields[1]
+                try:
+                    # setup fields
+                    self.fields = self.fields[:,self.axis]
+                    self.fields.sort(axis=0)
 
-                # recast energies
-                energies = {}
-                for f,e in self.energies.items():
-                    energies[ f[self.axis] ] = float64(e)
+                    # n: number steps; h: step size; a: quotient;
+                    self.n = (self.fields.size-1)/2
+                    self.h = self.fields[self.n+1:][0]
+                    self.a = self.fields[0] / self.fields[1]
 
-                self.energies = energies
+                    # recast energies
+                    energies = {}
+                    for f,e in self.energies.items():
+                        energies[ f[self.axis] ] = float64(e)
 
-                # perform the analysis
-                for o in [1, 2, 3, 4]:
-                    self.GR(o)
-                    print self.rr_log[o]
+                    self.energies = energies
+
+                    # perform the analysis
+                    for o in [1, 2, 3, 4]:
+                        self.GR(o)
+                        print self.rr_log[o]
+
+                except KeyError:
+                    pass
 
     def GR(self,order):
         """Generalized Romberg estimates"""
@@ -1830,6 +1867,98 @@ class FDIFF:
     def Gamma(self,i,j):
         pass
 
+    def D_i(self,i,E,f,np):
+        '''Components of dipole moment (energy expansion).'''
+        if np == 7:
+            try:
+                D_i= ( E[Fi(i,3*f)] - E[Fi(i,-3*f)] -
+                       9.0*(E[Fi(i,2*f)] - E[Fi(i,-2*f)] +
+                       5.0*(E[Fi(i,-f)] - E[Fi(i,f)]) ) ) / (60.0*abs(f))
+            except KeyError:
+                D_i=NaN
+
+        return D_i
+
+    def D_ij(self,i,j,E,f,np):
+        '''Components of polarizability (energy expansion).'''
+        if np == 7:
+            try:
+                if i==j:
+                    D_ij=  ( 2.0*( E[Fi(i,3*f)] + E[Fi(i,-3*f)] ) -
+                             27.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] -
+                                    10.0*( E[Fi(i,f)] + E[Fi(i,-f)] )) -
+                             490.0*E[Fi(0,0)] ) / (360.0*abs(f*f))
+                if i!=j:
+                    D_ij=  ( 12.0*( E[Fij(i,j,3*f,f)] + E[Fij(i,j,f,3*f)] -
+                                    E[Fij(i,j,3*f,0)] - E[Fij(i,j,0,3*f)] +
+                                    E[Fij(i,j,-2*f,0)] + E[Fij(i,j,0,-2*f)] ) +
+                             480.0*E[Fij(i,j,f,f)] +
+                             330.0*( E[Fi(0,0)] - E[Fij(i,j,0,f)] - E[Fij(i,j,f,0)] ) +
+                             160.0*E[Fij(i,j,-f,-f)] -
+                             105.0*( E[Fij(i,j,f,2*f)] + E[Fij(i,j,2*f,f)] ) -
+                             15.0*( E[Fij(i,j,-2*f,-f)] + E[Fij(i,j,-f,-2*f)] ) +
+                             90.0*( E[Fij(i,j,2*f,0)] + E[Fij(i,j,0,2*f)] -
+                                    E[Fij(i,j,-f,0)] - E[Fij(i,j,0,-f)] ) -
+                             60.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,-f,f)] ) +
+                              5.0*( E[Fij(i,j,2*f,-f)] + E[Fij(i,j,-f,2*f)] ) +
+                              3.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,f,-2*f)] ) +
+                              10.0*E[Fij(i,j,2*f,2*f)] ) / (360.0*abs(f*f))
+            except KeyError:
+                D_ij=NaN
+
+        return D_ij
+
+    def D_ijj(self,i,j,E,f,np):
+        '''Components of hyperpolarizability (energy expansion).'''
+        if np == 7:
+            try:
+                # Beta_iii
+                if i==j:
+                    D_ijj=  ( E[Fi(i,-3*f)] - E[Fi(i,3*f)] +
+                              8.0*( E[Fi(i,2*f)] - E[Fi(i,-2*f)] ) -
+                              13.0*( E[Fi(i,f)] - E[Fi(i,-f)] ) ) / (48.0*abs(f*f*f))
+                # Beta_ijj
+                if i!=j:
+                    D_ijj=  ( E[Fij(i,j,-f,2*f)] + E[Fij(i,j,-f,-2*f)] -
+                              E[Fij(i,j,f,2*f)] - E[Fij(i,j,f,-2*f)] +
+                              2.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,-2*f,-f)] -
+                                    E[Fij(i,j,2*f,f)] - E[Fij(i,j,2*f,-f)] ) +
+                              4.0*( E[Fij(i,j,2*f,0)] - E[Fij(i,j,-2*f,0)] ) +
+                              20.0*( E[Fij(i,j,f,f)] + E[Fij(i,j,f,-f)] -
+                                     E[Fij(i,j,-f,f)] - E[Fij(i,j,-f,-f)] ) -
+                              38.0*( E[Fij(i,j,f,0)] - E[Fij(i,j,-f,0)] ) ) / (144.0*abs(f*f*f))
+            except KeyError:
+                D_ijj=NaN
+
+        return D_ijj
+
+    def D_iijj(self,i,j,E,f,np):
+        '''Components of second hyperpolarizability (energy expansion).'''
+        if np == 7:
+            try:
+                # Gamma_iiii
+                if i==j:
+                    D_iijj=  ( 56.0*E[Fi(0,0)] - E[Fi(i,3*f)] - E[Fi(i,-3*f)] +
+                               12.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] ) -
+                               39.0*( E[Fi(i,f)] + E[Fi(i,-f)] ) ) / (144.0*abs(f*f*f*f))
+                # Gamma_iijj
+                if i!=j:
+                    D_iijj=  ( 72.0*E[Fi(0,0)] - E[Fij(i,j,-2*f,-f)] - E[Fij(i,j,-f,-2*f)] -
+                               E[Fij(i,j,-f,2*f)] - E[Fij(i,j,f,-2*f)] -
+                               E[Fij(i,j,f,2*f)] - E[Fij(i,j,2*f,-f)] -
+                               E[Fij(i,j,2*f,f)] - E[Fij(i,j,-2*f,f)] +
+                               2.0*( E[Fij(i,j,0,2*f)] + E[Fij(i,j,2*f,0)] +
+                                     E[Fij(i,j,-2*f,0)] + E[Fij(i,j,0,-2*f)] ) +
+                               20.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,f,f)] +
+                                      E[Fij(i,j,-f,-f)] + E[Fij(i,j,-f,f)] ) -
+                               38.0*( E[Fij(i,j,-f,0)] + E[Fij(i,j,0,-f)] +
+                                      E[Fij(i,j,0,f)] + E[Fij(i,j,f,0)] ) ) / (288.0*abs(f*f*f*f))
+            except KeyError:
+                D_iijj=NaN
+
+        return D_iijj
+
+
 class FDIFF_E_V(FDIFF):
 
     def __init__(self, E, fstep, units, method):
@@ -1908,25 +2037,95 @@ class FDIFF_E_VII(FDIFF):
 
     def Mu(self,i,E,f):
         '''Components of dipole moment (energy expansion).'''
-        try:
-            mu_i= -( E[Fi(i,3*f)] - E[Fi(i,-3*f)] -
-                     9.0*(E[Fi(i,2*f)] - E[Fi(i,-2*f)] +
-                          5.0*(E[Fi(i,-f)] - E[Fi(i,f)]) ) ) / (60.0*abs(f))
-        except KeyError:
-            mu_i=NaN
-
+        mu_i= -1.0*self.D_i(i,E,f,7)
         return mu_i
 
     def Alpha(self,i,j,E,f):
         '''Components of polarizability (energy expansion).'''
-        try:
-            if i==j:
-                alpha_ij= -( 2.0*( E[Fi(i,3*f)] + E[Fi(i,-3*f)] ) -
+        alpha_ij= -2.0*self.D_ij(i,j,E,f,7)
+        return alpha_ij
+
+    def Beta(self,i,j,E,f):
+        '''Components of hyperpolarizability (energy expansion).'''
+        beta_ijj = -6.0*self.D_ijj(i,j,E,f,7)
+        return beta_ijj
+
+    def Gamma(self,i,j,E,f):
+        '''Components of second hyperpolarizability (energy expansion).'''
+        gamma_iijj = -24.0*self.D_iijj(i,j,E,f,7)
+        return gamma_iijj
+
+class FDIFF_DD():
+
+    def __init__(self, base_property, fstep, units, cube):
+        self.base_property = base_property
+        self.fstep = fstep
+        self.units = units
+        self.cube = cube
+        self.Calculate()
+
+    def Calculate(self):
+        P = self.base_property
+        f = self.fstep  
+        indexes = ['x','y','z']
+
+        # polarizability density
+        for i in range(3):
+            t = self.D_i(i,P,f,7)
+            if isinstance(t, ndarray):
+                self.cube.data = t
+                self.cube.writeCubeFile('p_alpha_'+indexes[i]+'.cube')
+
+        # first hyperpolarizability density
+        for i in range(3):
+            t = self.D_ij(i,i,P,f,7)
+            if isinstance(t, ndarray):
+                self.cube.data = t
+                self.cube.writeCubeFile('p_beta_'+2*indexes[i]+'.cube')
+
+        # second hyperpolarizability density
+        for i in range(3):
+            t = self.D_iijj(i,i,P,f,7)
+            if isinstance(t, ndarray):
+                self.cube.data = t
+                self.cube.writeCubeFile('p_gamma_'+3*indexes[i]+'.cube')
+
+    def Fi(self,i,bi):
+        '''Select diagonal field.'''
+        Fi = [0,0,0]
+        Fi[i] = bi
+        return tuple(Fi)
+
+    def Fij(self,i,j,bi,bj):
+        '''Select off-diagonal field.'''
+        Fij = [0,0,0]
+        Fij[i] = bi
+        Fij[j] = bj
+        return tuple(Fij)
+
+    def D_i(self,i,E,f,np):
+        '''Components of dipole moment (energy expansion).'''
+        if np == 7:
+            try:
+                D_i= ( E[Fi(i,3*f)] - E[Fi(i,-3*f)] -
+                       9.0*(E[Fi(i,2*f)] - E[Fi(i,-2*f)] +
+                       5.0*(E[Fi(i,-f)] - E[Fi(i,f)]) ) ) / (60.0*abs(f))
+            except KeyError:
+                D_i=NaN
+
+        return D_i
+
+    def D_ij(self,i,j,E,f,np):
+        '''Components of polarizability (energy expansion).'''
+        if np == 7:
+            try:
+                if i==j:
+                    D_ij=  ( 2.0*( E[Fi(i,3*f)] + E[Fi(i,-3*f)] ) -
                              27.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] -
                                     10.0*( E[Fi(i,f)] + E[Fi(i,-f)] )) -
-                             490.0*E[Fi(0,0)] ) / (180.0*abs(f*f))
-            if i!=j:
-                alpha_ij= -( 12.0*( E[Fij(i,j,3*f,f)] + E[Fij(i,j,f,3*f)] -
+                             490.0*E[Fi(0,0)] ) / (360.0*abs(f*f))
+                if i!=j:
+                    D_ij=  ( 12.0*( E[Fij(i,j,3*f,f)] + E[Fij(i,j,f,3*f)] -
                                     E[Fij(i,j,3*f,0)] - E[Fij(i,j,0,3*f)] +
                                     E[Fij(i,j,-2*f,0)] + E[Fij(i,j,0,-2*f)] ) +
                              480.0*E[Fij(i,j,f,f)] +
@@ -1939,46 +2138,48 @@ class FDIFF_E_VII(FDIFF):
                              60.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,-f,f)] ) +
                               5.0*( E[Fij(i,j,2*f,-f)] + E[Fij(i,j,-f,2*f)] ) +
                               3.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,f,-2*f)] ) +
-                              10.0*E[Fij(i,j,2*f,2*f)] ) / (180.0*abs(f*f))
-        except KeyError:
-            alpha_ij=NaN
+                              10.0*E[Fij(i,j,2*f,2*f)] ) / (360.0*abs(f*f))
+            except KeyError:
+                D_ij=NaN
 
-        return alpha_ij
+        return D_ij
 
-    def Beta(self,i,j,E,f):
+    def D_ijj(self,i,j,E,f,np):
         '''Components of hyperpolarizability (energy expansion).'''
-        try:
-            # Beta_iii
-            if i==j:
-                beta_ijj= -( E[Fi(i,-3*f)] - E[Fi(i,3*f)] +
-                             8.0*( E[Fi(i,2*f)] - E[Fi(i,-2*f)] ) -
-                             13.0*( E[Fi(i,f)] - E[Fi(i,-f)] ) ) / (8.0*abs(f*f*f))
-            # Beta_ijj
-            if i!=j:
-                beta_ijj= -( E[Fij(i,j,-f,2*f)] + E[Fij(i,j,-f,-2*f)] -
-                             E[Fij(i,j,f,2*f)] - E[Fij(i,j,f,-2*f)] +
-                             2.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,-2*f,-f)] -
-                                   E[Fij(i,j,2*f,f)] - E[Fij(i,j,2*f,-f)] ) +
-                             4.0*( E[Fij(i,j,2*f,0)] - E[Fij(i,j,-2*f,0)] ) +
-                             20.0*( E[Fij(i,j,f,f)] + E[Fij(i,j,f,-f)] -
-                                    E[Fij(i,j,-f,f)] - E[Fij(i,j,-f,-f)] ) -
-                             38.0*( E[Fij(i,j,f,0)] - E[Fij(i,j,-f,0)] ) ) / (24.0*abs(f*f*f))
-        except KeyError:
-            beta_ijj=NaN
+        if np == 7:
+            try:
+                # Beta_iii
+                if i==j:
+                    D_ijj=  ( E[Fi(i,-3*f)] - E[Fi(i,3*f)] +
+                              8.0*( E[Fi(i,2*f)] - E[Fi(i,-2*f)] ) -
+                              13.0*( E[Fi(i,f)] - E[Fi(i,-f)] ) ) / (48.0*abs(f*f*f))
+                # Beta_ijj
+                if i!=j:
+                    D_ijj=  ( E[Fij(i,j,-f,2*f)] + E[Fij(i,j,-f,-2*f)] -
+                              E[Fij(i,j,f,2*f)] - E[Fij(i,j,f,-2*f)] +
+                              2.0*( E[Fij(i,j,-2*f,f)] + E[Fij(i,j,-2*f,-f)] -
+                                    E[Fij(i,j,2*f,f)] - E[Fij(i,j,2*f,-f)] ) +
+                              4.0*( E[Fij(i,j,2*f,0)] - E[Fij(i,j,-2*f,0)] ) +
+                              20.0*( E[Fij(i,j,f,f)] + E[Fij(i,j,f,-f)] -
+                                     E[Fij(i,j,-f,f)] - E[Fij(i,j,-f,-f)] ) -
+                              38.0*( E[Fij(i,j,f,0)] - E[Fij(i,j,-f,0)] ) ) / (144.0*abs(f*f*f))
+            except KeyError:
+                D_ijj=NaN
 
-        return beta_ijj
+        return D_ijj
 
-    def Gamma(self,i,j,E,f):
+    def D_iijj(self,i,j,E,f,np):
         '''Components of second hyperpolarizability (energy expansion).'''
-        try:
-            # Gamma_iiii
-            if i==j:
-                gamma_iijj= -( 56.0*E[Fi(0,0)] - E[Fi(i,3*f)] - E[Fi(i,-3*f)] +
+        if np == 7:
+            try:
+                # Gamma_iiii
+                if i==j:
+                    D_iijj=  ( 56.0*E[Fi(0,0)] - E[Fi(i,3*f)] - E[Fi(i,-3*f)] +
                                12.0*( E[Fi(i,2*f)] + E[Fi(i,-2*f)] ) -
-                               39.0*( E[Fi(i,f)] + E[Fi(i,-f)] ) ) / (6.0*abs(f*f*f*f))
-            # Gamma_iijj
-            if i!=j:
-                gamma_iijj= -( 72.0*E[Fi(0,0)] - E[Fij(i,j,-2*f,-f)] - E[Fij(i,j,-f,-2*f)] -
+                               39.0*( E[Fi(i,f)] + E[Fi(i,-f)] ) ) / (144.0*abs(f*f*f*f))
+                # Gamma_iijj
+                if i!=j:
+                    D_iijj=  ( 72.0*E[Fi(0,0)] - E[Fij(i,j,-2*f,-f)] - E[Fij(i,j,-f,-2*f)] -
                                E[Fij(i,j,-f,2*f)] - E[Fij(i,j,f,-2*f)] -
                                E[Fij(i,j,f,2*f)] - E[Fij(i,j,2*f,-f)] -
                                E[Fij(i,j,2*f,f)] - E[Fij(i,j,-2*f,f)] +
@@ -1987,11 +2188,12 @@ class FDIFF_E_VII(FDIFF):
                                20.0*( E[Fij(i,j,f,-f)] + E[Fij(i,j,f,f)] +
                                       E[Fij(i,j,-f,-f)] + E[Fij(i,j,-f,f)] ) -
                                38.0*( E[Fij(i,j,-f,0)] + E[Fij(i,j,0,-f)] +
-                                      E[Fij(i,j,0,f)] + E[Fij(i,j,f,0)] ) ) / (12.0*abs(f*f*f*f))
-        except KeyError:
-            gamma_iijj=NaN
+                                      E[Fij(i,j,0,f)] + E[Fij(i,j,f,0)] ) ) / (288.0*abs(f*f*f*f))
+            except KeyError:
+                D_iijj=NaN
 
-        return gamma_iijj
+        return D_iijj
+
 
 
 class FDIFF_D_V(FDIFF):
@@ -2583,6 +2785,142 @@ def Atomn(s,ptable):
     for n,a in enumerate(ptable):
         if a[0].lower().find(s.strip().lower()) !=-1 :
             return float(n+1)
+
+class CUBE:
+    def __init__(self,filename):
+        """Represents a Gaussian03 cubefile object.
+        Lifted from Noel O'Boyle Cubefile class
+
+        Attributes:
+            data -- a scipy array containing the data
+            numAtoms -- the number of atoms
+            origin -- the origin
+            numPoints -- a list of the number of points in x,y,z
+            spacing -- a list of the spacing in x,y,z
+            dv -- the volume of chunk
+        """
+
+        self.readCubeFile(filename)
+        self.CubeHeader()
+        #print self.header
+        #print self.numPoints
+        #print self.spacing
+        #print self.dv
+        #print self.origin
+        #print self.dv*self.data.sum()
+
+    def readCubeFile(self,filename):
+        """Read in a cube file."""
+
+        inputfile = open(filename,"r")
+        self.head = [inputfile.readline(),inputfile.readline()]
+
+        temp = inputfile.readline().strip().split()
+        self.numAtoms = int(temp[0])
+        self.origin = map(float,temp[1:])
+        
+        self.numPoints = [0]*3
+        self.spacing = [0]*3
+        self.dv=1.0
+        for i in range(3):
+            line = inputfile.readline().strip().split()
+            self.numPoints[i] = int(line[0])
+            temp = map(float,line[1:])
+            self.spacing[i] = temp[i]
+            self.dv *= temp[i]
+            assert sum(temp[:i]+temp[i+1:])==0
+    
+        # Read in the lines with atom data
+        self.atoms = ''
+        for i in range(self.numAtoms):
+            self.atoms += inputfile.readline()
+        
+        self.data = zeros( (self.numPoints[1],self.numPoints[0],self.numPoints[2]),"float" )
+        i = j = k =0
+        while i<self.numPoints[0]:
+            #print filename, 'i=',i,'j=',j,'k=',k
+            line = inputfile.next()
+            temp = map(float,line.strip().split())
+            for x in range(0,len(temp)):
+                self.data[j,i,x+k] = temp[x]
+
+            k+=len(temp)
+            if k==self.numPoints[2]:
+                j+=1
+                k = 0
+                if j==self.numPoints[1]:
+                    i+=1
+                    j = 0
+                    
+        inputfile.close()
+
+    def CubeHeader(self):
+        """Read in a cube file."""
+
+        log=self.head[0]+self.head[1]
+
+        line = 3*'%12.6f'+'\n'
+        log += '%5d' % self.numAtoms
+        log += line % tuple(self.origin)
+
+        for i in range(3):
+            temp = [0.0, 0.0, 0.0]
+            temp[i] = self.spacing[i]
+            log += '%5d' % self.numPoints[i]
+            log += line % tuple(temp)
+
+        log += self.atoms
+
+        self.header = log
+
+    def writeCubeFile(self,filename):
+        """Read in a cube file."""
+
+        outputfile = open(filename,"w")
+
+        log=self.head[0]+self.head[1]
+
+        line = 3*'%12.6f'+'\n'
+        log += '%5d' % self.numAtoms
+        log += line % tuple(self.origin)
+
+        for i in range(3):
+            temp = [0.0, 0.0, 0.0]
+            temp[i] = self.spacing[i]
+            log += '%5d' % self.numPoints[i]
+            log += line % tuple(temp)
+
+        log += self.atoms
+
+        #savetxt(filename, self.data, fmt='%13.5e')
+        #self.data.tofile(outputfile, sep='\n', format='%13.5e')
+        #self.data = zeros( (self.numPoints[1],self.numPoints[0],self.numPoints[2]),"float" )
+
+        i = j = k =0
+        nlines = int(self.numPoints[2]/6)
+        ntails = self.numPoints[2] - 6*nlines
+
+        while i < self.numPoints[0]:
+
+            line = 6*'%13.5e'+'\n'
+            for l in range(nlines):
+                log += line % tuple(self.data[j,i,k:k+6])
+                k+=6
+
+            if ntails > 0:
+                line = ntails*'%13.5e'+'\n'
+                log += line % tuple(self.data[j,i,k:l+k])
+                k+=ntails
+
+            if k==self.numPoints[2]:
+               j+=1
+               k = 0
+               if j==self.numPoints[1]:
+                   i+=1
+                   j = 0
+                    
+        outputfile.write(log)
+        outputfile.close()
 
 #----------------------------------------------------------------------------
 # Main routine
