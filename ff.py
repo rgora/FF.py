@@ -1120,7 +1120,8 @@ class MOLCAS(PARSER):
                 while 1:
                     line = self.log.readline()
                     if line == '': break
-                    if line.find('MOLCAS executing module FFPT') !=-1: break
+                    #if line.find('MOLCAS executing module FFPT') !=-1: break
+                    if line.find('FFPT    DIPO    COMP') !=-1: break
                     # ... read scf energy and dipole ...
                     if line.find('MOLCAS executing module SCF') !=-1:
                         if ('SCF' not in self.energies):
@@ -1222,9 +1223,9 @@ gaussian ffield
             print "Problem with *.xyz file?"
             sys.exit(1)
 
-        fieldtail='\n'
-        for i in range(10):
-            fieldtail+='%7.4f\n' % 0.0
+        fieldtail=''
+        #for i in range(10):
+        #    fieldtail+='%7.4f\n' % 0.0
 
         # write input files
         for f in self.frange:
@@ -2807,7 +2808,30 @@ class CUBE:
         #print self.spacing
         #print self.dv
         #print self.origin
-        #print self.dv*self.data.sum()
+
+    def I_P_dv(self):
+        self.P = self.dv*self.data.sum()
+        return self.P
+
+    def I_rP_dv(self):
+
+        self.rP = zeros(3)
+
+        for i in range(self.numPoints[0]):
+            for j in range(self.numPoints[1]):
+                for k in range(self.numPoints[2]):
+                    x,y,z = self.xyz(i,j,k)
+                    self.rP[0] += x*self.data[j,i,k]*self.dv
+                    self.rP[1] += y*self.data[j,i,k]*self.dv
+                    self.rP[2] += z*self.data[j,i,k]*self.dv
+
+        return self.rP
+
+    def xyz(self,ix,iy,iz):
+        x = self.origin[0]+(ix)*self.spacing[0]
+        y = self.origin[1]+(iy)*self.spacing[1]
+        z = self.origin[2]+(iz)*self.spacing[2]
+        return array([x,y,z])
 
     def readCubeFile(self,filename):
         """Read in a cube file."""
@@ -2838,7 +2862,6 @@ class CUBE:
         self.data = zeros( (self.numPoints[1],self.numPoints[0],self.numPoints[2]),"float" )
         i = j = k =0
         while i<self.numPoints[0]:
-            #print filename, 'i=',i,'j=',j,'k=',k
             line = inputfile.next()
             temp = map(float,line.strip().split())
             for x in range(0,len(temp)):
