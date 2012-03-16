@@ -1128,12 +1128,18 @@ class MOLCAS(PARSER):
                             self.energies['SCF']={}
                         if (field not in self.energies['SCF']):
                             self.energies['SCF'][field]= float64(ReFindLine(self.log,'Total .+ energy').split()[-1])
-                        if ('SCF' not in self.dipoles):
-                            self.dipoles['SCF']={}
-                        if (field not in self.dipoles['SCF']):
-                            line = FindLine(self.log,'Dipole Moment')
-                            dipl = SkipLines(self.log,2).split()
-                            self.dipoles['SCF'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                    if line.find('Dipole Moment') !=-1:
+                            if ('SCF' not in self.dipoles):
+                                self.dipoles['SCF']={}
+                            if (field not in self.dipoles['SCF']):
+                                dipl = SkipLines(self.log,2).split()
+                                self.dipoles['SCF'][field] = array([dipl[1],dipl[3],dipl[5]],dtype=float64)/au2d
+                    if line.find('1-st cartesian moments') !=-1:
+                            if ('SCF' not in self.dipoles):
+                                self.dipoles['SCF']={}
+                            if (field not in self.dipoles['SCF']):
+                                dipl = SkipLines(self.log,6).split()
+                                self.dipoles['SCF'][field] = array([dipl[1],dipl[2],dipl[3]],dtype=float64)/au2d
                     # ... read mp2 energy and dipole ...
                     if line.find('MOLCAS executing module MBPT2') !=-1:
                         if ('MP2' not in self.energies):
