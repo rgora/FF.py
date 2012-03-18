@@ -261,10 +261,10 @@ class PARSER:
         for e in self.energies.keys():
 
             self.properties['E'][e]={}
-            npts = int(2*max(max(self.energies[e].keys()))/self.fstep+1)
 
             if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.energies[e].keys():
+                    npts = int(2*max(max(self.energies[e][i].keys()))/self.fstep+1)
                     self.properties['E'][e][i]={}
                     label = e + " C(" + i + ") energy"
                     if npts >= 5:
@@ -273,6 +273,7 @@ class PARSER:
                         self.properties['E'][e][i]['FF7'] = FDIFF_E_VII(self.energies[e][i], self.fstep, self.units, label+" (7pt)")
                     self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], -1, label)
             else:
+                npts = int(2*max(max(self.energies[e].keys()))/self.fstep+1)
                 label = e + " energy"
                 if npts >= 5:
                     self.properties['E'][e]['FF5'] = FDIFF_E_V(self.energies[e], self.fstep, self.units, label+" (5pt)")
@@ -650,9 +651,7 @@ class GAMESS(PARSER):
                 line = line.split()
 
                 # ... set field label ...
-                field = ( round(float(line[-3]),9),
-                          round(float(line[-2]),9),
-                          round(float(line[-1]),9) )
+                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=6))
 
                 # ... update base field ...
                 self.SetBaseField(field)
@@ -664,9 +663,7 @@ class GAMESS(PARSER):
             if line.find('ELECTRIC FIELD') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = ( round(float(line[-3]),9),
-                          round(float(line[-2]),9),
-                          round(float(line[-1]),9) )
+                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=6))
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read scf energy ...
@@ -731,9 +728,7 @@ class GAMESS(PARSER):
             if line !=-1:
                 l = line.split()
                 # ... set field label ...
-                field = ( round(float(l[-3]),9),
-                          round(float(l[-2]),9),
-                          round(float(l[-1]),9) )
+                field = tuple(self.sign*around(array(l[-3:],dtype=float64), decimals=6))
                 # ... update base field ...
                 self.SetBaseField(field)
             else:
@@ -1111,9 +1106,7 @@ class MOLCAS(PARSER):
             if line.find('FFPT    DIPO    COMP') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = ( self.sign*round(float(line[-5]),9),
-                          self.sign*round(float(line[-3]),9),
-                          self.sign*round(float(line[-1]),9) )
+                field = tuple(self.sign*around(array([line[-5],line[-3],line[-1]] ,dtype=float64), decimals=6))
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read all energies for this field ...
@@ -1279,9 +1272,7 @@ class GAUSSIAN(PARSER):
                     log=open(fchk)
                     line = FindLine(log,'External E-field')
                     line = SkipLines(log,1).split()
-                    field = ( self.sign*round(float(line[1]),9), 
-                              self.sign*round(float(line[2]),9),
-                              self.sign*round(float(line[3]),9) )
+                    field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=6))
 
                 # parse current cube file
                 cubefile = chk.replace('chk','cube')
@@ -1405,9 +1396,7 @@ class GAUSSIAN(PARSER):
         # ... read applied external field ...
         line = FindLine(self.log,'External E-field')
         line = SkipLines(self.log,1).split()
-        field = ( self.sign*round(float(line[1]),9), 
-                  self.sign*round(float(line[2]),9),
-                  self.sign*round(float(line[3]),9) )
+        field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=6))
 
         # ... update base field ...
         self.SetBaseField(field)
@@ -1853,14 +1842,14 @@ class FDIFF:
         '''Select diagonal field.'''
         Fi = [0,0,0]
         Fi[i] = bi
-        return tuple(Fi)
+        return tuple(around(Fi,decimals=6))
 
     def Fij(self,i,j,bi,bj):
         '''Select off-diagonal field.'''
         Fij = [0,0,0]
         Fij[i] = bi
         Fij[j] = bj
-        return tuple(Fij)
+        return tuple(around(Fij,decimals=6))
 
     def Mu(self,i):
         pass
@@ -2101,14 +2090,14 @@ class FDIFF_DD():
         '''Select diagonal field.'''
         Fi = [0,0,0]
         Fi[i] = bi
-        return tuple(Fi)
+        return tuple(around(Fi,decimals=6))
 
     def Fij(self,i,j,bi,bj):
         '''Select off-diagonal field.'''
         Fij = [0,0,0]
         Fij[i] = bi
         Fij[j] = bj
-        return tuple(Fij)
+        return tuple(around(Fij,decimals=6))
 
     def D_i(self,i,E,f,np):
         '''Components of dipole moment (energy expansion).'''
@@ -2309,14 +2298,14 @@ def Fi(i,bi):
     '''Select diagonal field.'''
     Fi = [0,0,0]
     Fi[i] = bi
-    return tuple(Fi)
+    return tuple(around(Fi,decimals=6))
 
 def Fij(i,j,bi,bj):
     '''Select off-diagonal field.'''
     Fij = [0,0,0]
     Fij[i] = bi
     Fij[j] = bj
-    return tuple(Fij)
+    return tuple(around(Fij,decimals=6))
 
 def Mu_E(i,E,f):
     '''Components of dipole moment (energy expansion).'''
