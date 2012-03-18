@@ -1024,7 +1024,7 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
             filename = filename.replace(' ','0')
 
             # Prepare FFPT
-            FFPT=' &FFPT\nDIPO\n'
+            FFPT=' &FFPT\nCUMU\nDIPO\n'
             F=self.Fields(f,self.fstep).split()
             FFPT+='X ' + F[0] + '\n'
             FFPT+='Y ' + F[1] + '\n'
