@@ -267,16 +267,14 @@ class PARSER:
                     npts = int(2*max(max(self.energies[e][i].keys()))/self.fstep+1)
                     self.properties['E'][e][i]={}
                     label = e + " C(" + i + ") energy"
-                    if npts >= 5:
-                        self.properties['E'][e][i]['FF5'] = FDIFF_E_V(self.energies[e][i], self.fstep, self.units, label+" (5pt)")
+                    self.properties['E'][e][i]['FF5'] = FDIFF_E_V(self.energies[e][i], self.fstep, self.units, label+" (5pt)")
                     if npts >= 7:
                         self.properties['E'][e][i]['FF7'] = FDIFF_E_VII(self.energies[e][i], self.fstep, self.units, label+" (7pt)")
                     self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], -1, label)
             else:
                 npts = int(2*max(max(self.energies[e].keys()))/self.fstep+1)
                 label = e + " energy"
-                if npts >= 5:
-                    self.properties['E'][e]['FF5'] = FDIFF_E_V(self.energies[e], self.fstep, self.units, label+" (5pt)")
+                self.properties['E'][e]['FF5'] = FDIFF_E_V(self.energies[e], self.fstep, self.units, label+" (5pt)")
                 if npts >= 7:
                     self.properties['E'][e]['FF7'] = FDIFF_E_VII(self.energies[e], self.fstep, self.units, label+" (7pt)")
                 self.properties['E'][e]['RR'] = ROMBERG(self.energies[e], -1, label)
@@ -1765,7 +1763,7 @@ class FDIFF:
         self.Bz = Bz = (3.0/5.0)*B.sum(axis=0)[2]
         # projection to the dipole moment vector
         self.Bm = Bm = (3.0/5.0)*dot(M,B.sum(axis=0))/Mv
-        self.Bv = Bv = (1.0/5.0)*sqrt(dot(B.sum(axis=0),B.sum(axis=0)))
+        self.Bv = Bv = (3.0/5.0)*sqrt(dot(B.sum(axis=0),B.sum(axis=0)))
 
         self.properties['B'] = B
         self.properties['Bx'] = Bx
