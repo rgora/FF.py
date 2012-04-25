@@ -1240,9 +1240,17 @@ class GAUSSIAN(PARSER):
 
         self.fstep = 0
 
-        if 'g09root' not in os.environ:
+        if os.path.islink(sys.argv[0]):
+            formchk_path = os.path.realpath(os.path.dirname(os.readlink(sys.argv[0])))
+        else:
+            formchk_path = os.path.realpath(os.path.dirname(sys.argv[0]))
+
+        if os.path.exists(formchk_path+'/formchk.long'):
+            formchk = formchk_path+'/formchk.long'
+        elif 'g09root' in os.environ:
             #os.putenv('g09root','/opt/gaussian')
-            os.environ['g09root']='/opt/gaussian'
+            #os.environ['g09root']='/opt/gaussian'
+            formchk = os.environ['g09root']+'/g09/formchk'
 
         logfiles=[]
         for f in os.listdir(self.logpath):
@@ -1254,8 +1262,16 @@ class GAUSSIAN(PARSER):
             # prepare formated checkpoints
             fchk = chk.replace('chk','fchk')
             if not os.path.exists(fchk):
-                print "Using %s to format checkpoints" % (os.environ['g09root']+'/g09/formchk')
-                Run(os.environ['g09root']+'/g09/formchk', chk + ' ' + fchk)
+                try:
+                    print "Using %s to format checkpoints" % (formchk)
+                    Run(formchk, chk+' '+fchk)
+                except UnboundLocalError:
+                    msg  = '''Counldn't find a valid formchk executable\n'''
+                    msg += '''Please: a) set $g09root variable, or\n'''
+                    msg += '''        b) put a copy of formchk.long executable in the same path as this script, or\n'''
+                    msg += '''        c) prepare the formatted checkpoints by hand'''
+                    print msg
+                    sys.exit(4)
 
             # parse current logfile
             self.ParseFile(fchk)
