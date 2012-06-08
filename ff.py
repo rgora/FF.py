@@ -264,7 +264,7 @@ class PARSER:
 
             if self.pkg == 'gamess' and self.runtyp == 'eds':
                 for i in self.energies[e].keys():
-                    npts = int(2*max(max(self.energies[e][i].keys()))/self.fstep+1)
+                    npts = int(round(2*max(max(self.energies[e][i].keys()))/self.fstep+1))
                     self.properties['E'][e][i]={}
                     label = e + " C(" + i + ") energy"
                     self.properties['E'][e][i]['FF5'] = FDIFF_E_V(self.energies[e][i], self.fstep, self.units, label+" (5pt)")
@@ -272,7 +272,7 @@ class PARSER:
                         self.properties['E'][e][i]['FF7'] = FDIFF_E_VII(self.energies[e][i], self.fstep, self.units, label+" (7pt)")
                     self.properties['E'][e][i]['RR'] = ROMBERG(self.energies[e][i], -1, label)
             else:
-                npts = int(2*max(max(self.energies[e].keys()))/self.fstep+1)
+                npts = int(round(2*max(max(self.energies[e].keys()))/self.fstep+1))
                 label = e + " energy"
                 self.properties['E'][e]['FF5'] = FDIFF_E_V(self.energies[e], self.fstep, self.units, label+" (5pt)")
                 if npts >= 7:
