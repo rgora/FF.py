@@ -337,11 +337,19 @@ class PARSER:
             print "\n%s energies:" % (e)
             print 55*"-"
 
-            #for f in sorted( self.energies[e].keys(), key=self.energies[e].get ):
-            for f in sorted( self.energies[e].keys() ):
-                row='E(%7.4f,%7.4f,%7.4f) = ' % f
-                row+='%26.15f' % self.energies[e][f]
-                print row
+            if self.pkg == 'gamess' and self.runtyp == 'eds':
+                for i in self.energies[e].keys():
+                    print "C(%s):\n" % (i)
+                    for f in sorted( self.energies[e][i].keys() ):
+                        row='E(%7.4f,%7.4f,%7.4f) = ' % f
+                        row+='%26.15f' % self.energies[e][i][f]
+                        print row
+            else:
+                #for f in sorted( self.energies[e].keys(), key=self.energies[e].get ):
+                for f in sorted( self.energies[e].keys() ):
+                    row='E(%7.4f,%7.4f,%7.4f) = ' % f
+                    row+='%26.15f' % self.energies[e][f]
+                    print row
 
 #----------------------------------------------------------------------------
 # Common input template routines
