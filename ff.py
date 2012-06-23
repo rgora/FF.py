@@ -341,13 +341,13 @@ class PARSER:
                 for i in self.energies[e].keys():
                     print "C(%s):\n" % (i)
                     for f in sorted( self.energies[e][i].keys() ):
-                        row='E(%7.4f,%7.4f,%7.4f) = ' % f
+                        row='E(%12.8f,%12.8f,%12.8f) = ' % f
                         row+='%26.15f' % self.energies[e][i][f]
                         print row
             else:
                 #for f in sorted( self.energies[e].keys(), key=self.energies[e].get ):
                 for f in sorted( self.energies[e].keys() ):
-                    row='E(%7.4f,%7.4f,%7.4f) = ' % f
+                    row='E(%12.8f,%12.8f,%12.8f) = ' % f
                     row+='%26.15f' % self.energies[e][f]
                     print row
 
@@ -402,98 +402,98 @@ class INPUTS:
             a = self.grr[1]
             axis = self.grr[2]
 
-            fields = [ '%7.4f %7.4f %7.4f' % ( 0.0, 0.0, 0.0 ) ]
+            fields = [ '%12.8f %12.8f %12.8f' % ( 0.0, 0.0, 0.0 ) ]
 
             for p in range(np):
-                fields.append( '%7.4f %7.4f %7.4f' % self.RRfield(p,a, f,axis) )
+                fields.append( '%12.8f %12.8f %12.8f' % self.RRfield(p,a, f,axis) )
             for p in range(np):
-                fields.append( '%7.4f %7.4f %7.4f' % self.RRfield(p,a,-f,axis) )
+                fields.append( '%12.8f %12.8f %12.8f' % self.RRfield(p,a,-f,axis) )
 
         # 7 point formulas
         elif len(self.frange) == 55 or len(self.frange) == 19 or len(self.frange) == 7 :
-            fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,- 0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  2*f),
-                    '%7.4f %7.4f %7.4f'  % (-3*f,  0.0,- 0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 3*f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0, -3*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  3*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -3*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  3*f),
-                    '%7.4f %7.4f %7.4f'  % (  -f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,    f),
-                    '%7.4f %7.4f %7.4f'  % (  -f, -2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f, -2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,  2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0, -2*f),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  2*f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0, -2*f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f, -2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f, -2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  2*f)]
+            fields=['%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,  0.0,- 0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0, -2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0, -2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  2*f),
+                    '%12.8f %12.8f %12.8f'  % (-3*f,  0.0,- 0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 3*f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0, -3*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  3*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0, -3*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  3*f),
+                    '%12.8f %12.8f %12.8f'  % (  -f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,    f),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0, -2*f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  2*f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0, -2*f,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  2*f,    f),
+                    '%12.8f %12.8f %12.8f'  % (  -f, -2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f, -2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,  2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0, -2*f),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,  2*f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0, -2*f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,  2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f, -2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,  2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f, -2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,  2*f)]
 
         # 5 point formulas
         else:
-            fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,- 0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -2*f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  2*f),
-                    '%7.4f %7.4f %7.4f'  % (  -f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,   -f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (   f,    f,  0.0),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,   -f),
-                    '%7.4f %7.4f %7.4f'  % (  -f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % (   f,  0.0,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,   -f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,    f),
-                    '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f)]
+            fields=['%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % (-2*f,  0.0,- 0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 2*f,  0.0,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0, -2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  2*f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0, -2*f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  2*f),
+                    '%12.8f %12.8f %12.8f'  % (  -f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,   -f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (   f,    f,  0.0),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,   -f),
+                    '%12.8f %12.8f %12.8f'  % (  -f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % (   f,  0.0,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,   -f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,    f),
+                    '%12.8f %12.8f %12.8f'  % ( 0.0,    f,    f)]
 
         return  fields[i]
 
@@ -657,7 +657,7 @@ class GAMESS(PARSER):
                 line = line.split()
 
                 # ... set field label ...
-                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=6))
+                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=8))
 
                 # ... update base field ...
                 self.SetBaseField(field)
@@ -669,7 +669,7 @@ class GAMESS(PARSER):
             if line.find('ELECTRIC FIELD') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=6))
+                field = tuple(self.sign*around(array(line[-3:],dtype=float64), decimals=8))
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read scf energy ...
@@ -734,7 +734,7 @@ class GAMESS(PARSER):
             if line !=-1:
                 l = line.split()
                 # ... set field label ...
-                field = tuple(self.sign*around(array(l[-3:],dtype=float64), decimals=6))
+                field = tuple(self.sign*around(array(l[-3:],dtype=float64), decimals=8))
                 # ... update base field ...
                 self.SetBaseField(field)
             else:
@@ -1112,7 +1112,7 @@ class MOLCAS(PARSER):
             if line.find('FFPT    DIPO    COMP') !=-1:
                 line = line.split()
                 # ... set field label ...
-                field = tuple(self.sign*around(array([line[-5],line[-3],line[-1]] ,dtype=float64), decimals=6))
+                field = tuple(self.sign*around(array([line[-5],line[-3],line[-1]] ,dtype=float64), decimals=8))
                 # ... update base field ...
                 self.SetBaseField(field)
                 # ... read all energies for this field ...
@@ -1294,7 +1294,7 @@ class GAUSSIAN(PARSER):
                     log=open(fchk)
                     line = FindLine(log,'External E-field')
                     line = SkipLines(log,1).split()
-                    field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=6))
+                    field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=8))
 
                 # parse current cube file
                 cubefile = chk.replace('chk','cube')
@@ -1418,7 +1418,7 @@ class GAUSSIAN(PARSER):
         # ... read applied external field ...
         line = FindLine(self.log,'External E-field')
         line = SkipLines(self.log,1).split()
-        field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=6))
+        field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=8))
 
         # ... update base field ...
         self.SetBaseField(field)
@@ -1508,7 +1508,7 @@ def ReFindLine(open_file,pattern):
 def PunchEn(out,i,field,energies):
     '''Punch energies to out file'''
     row='%26.15f ' % energies[F]
-    row+='%7.4f' % field[i]
+    row+='%12.8f' % field[i]
     row+='\t\tF=%s' % str(field)
     out.write( row+'\n' )
 
@@ -1549,30 +1549,30 @@ class ROMBERG:
 
             if self.romberg:
 
-                try:
-                    # setup fields
-                    self.fields = self.fields[:,self.axis]
-                    self.fields.sort(axis=0)
+               try:
+                   # setup fields
+                   self.fields = self.fields[:,self.axis]
+                   self.fields.sort(axis=0)
 
-                    # n: number steps; h: step size; a: quotient;
-                    self.n = (self.fields.size-1)/2
-                    self.h = self.fields[self.n+1:][0]
-                    self.a = self.fields[0] / self.fields[1]
+                   # n: number steps; h: step size; a: quotient;
+                   self.n = (self.fields.size-1)/2
+                   self.h = self.fields[self.n+1:][0]
+                   self.a = round(self.fields[0]/self.fields[1], 4)
 
-                    # recast energies
-                    energies = {}
-                    for f,e in self.energies.items():
-                        energies[ f[self.axis] ] = float64(e)
+                   # recast energies
+                   energies = {}
+                   for f,e in self.energies.items():
+                       energies[ f[self.axis] ] = float64(e)
 
-                    self.energies = energies
+                   self.energies = energies
 
-                    # perform the analysis
-                    for o in [1, 2, 3, 4]:
-                        self.GR(o)
-                        print self.rr_log[o]
+                   # perform the analysis
+                   for o in [1, 2, 3, 4]:
+                       self.GR(o)
+                       print self.rr_log[o]
 
-                except KeyError:
-                    pass
+               except KeyError:
+                   pass
 
     def GR(self,order):
         """Generalized Romberg estimates"""
@@ -1609,13 +1609,13 @@ class ROMBERG:
 
         # Format results for final printout and storage
         log  = 'GR scheme %1d%s derivative (a=%3.1f) %s\n' % (order, sufix, self.a, self.label)
-        log += (9+10*n)*'-'
-        log += '\n%9s' % ( 'field / k' )
+        log += (12+10*n)*'-'
+        log += '\n%12s' % ( 'field / k' )
         log += '%10d'*n % tuple( [k for k in range(n) ] )
-        log += '\n' + (9+10*n)*'-'
+        log += '\n' + (12+10*n)*'-'
 
         for i in range(len(P)):
-            log += '\n%9.4f' % ( self.h*self.a**i )
+            log += '\n%12.8f' % ( self.h*self.a**i )
 
             for j in range(len(P[i])):
                 log += line % P[j][i]
@@ -1626,12 +1626,12 @@ class ROMBERG:
             r_i = abs( array(dP.values()) ).argmin()
             r_k = dP.keys()[r_i] 
 
-            log += '\n' + (9+10*n)*'-'
+            log += '\n' + (12+10*n)*'-'
             log += '\n P[p=%d,k=%d] = ' % ( r_k[1]+1, r_k[0] )
             self.rr[order] = P[r_k[0]][r_k[1]]
             log += line % self.rr[order]
             log += ' +/- ' + line % dP.values()[r_i]
-            log += '\n' + (9+10*n)*'-'
+            log += '\n' + (12+10*n)*'-'
         except ValueError:
             self.rr[order] = NaN
 
@@ -1644,13 +1644,13 @@ class ROMBERG:
 
         # Just for testing
         log  = 'GR scheme %1d derivative (a=%3.1f)\n' % (order, self.a)
-        log += (9+10*n)*'-'
-        log += '\n%9s' % ( 'field / k' )
+        log += (12+10*n)*'-'
+        log += '\n%12s' % ( 'field / k' )
         log += '%10d'*n % tuple( [k for k in range(n) ] )
-        log += '\n' + (9+10*n)*'-'
+        log += '\n' + (12+10*n)*'-'
 
         for i in range(len(P)):
-            log += '\n%9.4f' % ( self.h*self.a**i )
+            log += '\n%12.8f' % ( self.h*self.a**i )
 
             for j in range(len(P[i])):
                 if j > 0:
@@ -1668,31 +1668,31 @@ class ROMBERG:
 
         # ... 1st derivative ...
         if order == 1:
-            D = ( self.energies[ self.h*self.a**k] - 
-                  self.energies[-self.h*self.a**k] 
+            D = ( self.energies[ round( self.h*self.a**k,8) ] - 
+                  self.energies[ round(-self.h*self.a**k,8) ] 
                 ) / ( 2*self.h*self.a**k )
 
         # ... 2nd derivative ...
         if order == 2:
-            D = ( self.energies[-self.h*self.a**k] +
-                  self.energies[ self.h*self.a**k] - 
+            D = ( self.energies[ round(-self.h*self.a**k,8) ] +
+                  self.energies[ round( self.h*self.a**k,8) ] - 
                   2*self.energies[0.0]
                 ) / (self.h*self.a**k)**2
 
         # ... 3rd derivative ...
         if order == 3:
-            D = 3*( self.a*self.energies[-self.h*self.a**k] -
-                    self.a*self.energies[ self.h*self.a**k] +
-                    self.energies[ self.h*self.a**(k+1)] -
-                    self.energies[-self.h*self.a**(k+1)]
+            D = 3*( self.a*self.energies[ round(-self.h*self.a**k,8) ] -
+                    self.a*self.energies[ round( self.h*self.a**k,8) ] +
+                    self.energies[ round( self.h*self.a**(k+1),8) ] -
+                    self.energies[ round(-self.h*self.a**(k+1),8) ]
                   ) / ( self.a*(self.a**2-1)*(self.h*self.a**k)**3 )
 
         # ... 4th derivative ...
         if order == 4:
-            D = 12*( ( self.energies[-self.h*self.a**(k+1)] +
-                       self.energies[ self.h*self.a**(k+1)] ) -
-                     ( (self.a**2)*self.energies[-self.h*self.a**k] +
-                       (self.a**2)*self.energies[ self.h*self.a**k] ) +
+            D = 12*( ( self.energies[ round(-self.h*self.a**(k+1),8) ] +
+                       self.energies[ round( self.h*self.a**(k+1),8) ] ) -
+                     ( (self.a**2)*self.energies[ round(-self.h*self.a**k,8) ] +
+                       (self.a**2)*self.energies[ round( self.h*self.a**k,8) ] ) +
                        2*(self.a**2-1)*self.energies[0.0]
                    ) / ( (self.a**2)*(self.a**2-1)*(self.h*self.a**k)**4 )
 
@@ -1864,14 +1864,14 @@ class FDIFF:
         '''Select diagonal field.'''
         Fi = [0,0,0]
         Fi[i] = bi
-        return tuple(around(Fi,decimals=6))
+        return tuple(around(Fi,decimals=8))
 
     def Fij(self,i,j,bi,bj):
         '''Select off-diagonal field.'''
         Fij = [0,0,0]
         Fij[i] = bi
         Fij[j] = bj
-        return tuple(around(Fij,decimals=6))
+        return tuple(around(Fij,decimals=8))
 
     def Mu(self,i):
         pass
@@ -2112,14 +2112,14 @@ class FDIFF_DD():
         '''Select diagonal field.'''
         Fi = [0,0,0]
         Fi[i] = bi
-        return tuple(around(Fi,decimals=6))
+        return tuple(around(Fi,decimals=8))
 
     def Fij(self,i,j,bi,bj):
         '''Select off-diagonal field.'''
         Fij = [0,0,0]
         Fij[i] = bi
         Fij[j] = bj
-        return tuple(around(Fij,decimals=6))
+        return tuple(around(Fij,decimals=8))
 
     def D_i(self,i,E,f,np):
         '''Components of dipole moment (energy expansion).'''
@@ -2286,31 +2286,31 @@ class FDIFF_D_V(FDIFF):
 def fields(i,f):
     '''25 fields for average properties'''
 
-    fields=['%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  0.0),
-            '%7.4f %7.4f %7.4f'  % (  -f,  0.0,  0.0),
-            '%7.4f %7.4f %7.4f'  % (   f,  0.0,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,    f,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,   -f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,    f),
-            '%7.4f %7.4f %7.4f'  % (-2*f,  0.0,- 0.0),
-            '%7.4f %7.4f %7.4f'  % ( 2*f,  0.0,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0, -2*f,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,  2*f,  0.0),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0, -2*f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,  0.0,  2*f),
-            '%7.4f %7.4f %7.4f'  % (  -f,   -f,  0.0),
-            '%7.4f %7.4f %7.4f'  % (   f,   -f,  0.0),
-            '%7.4f %7.4f %7.4f'  % (  -f,    f,  0.0),
-            '%7.4f %7.4f %7.4f'  % (   f,    f,  0.0),
-            '%7.4f %7.4f %7.4f'  % (  -f,  0.0,   -f),
-            '%7.4f %7.4f %7.4f'  % (   f,  0.0,   -f),
-            '%7.4f %7.4f %7.4f'  % (  -f,  0.0,    f),
-            '%7.4f %7.4f %7.4f'  % (   f,  0.0,    f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,   -f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,    f,   -f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,   -f,    f),
-            '%7.4f %7.4f %7.4f'  % ( 0.0,    f,    f)]
+    fields=['%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  0.0),
+            '%12.8f %12.8f %12.8f'  % (  -f,  0.0,  0.0),
+            '%12.8f %12.8f %12.8f'  % (   f,  0.0,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,    f,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,   -f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,    f),
+            '%12.8f %12.8f %12.8f'  % (-2*f,  0.0,- 0.0),
+            '%12.8f %12.8f %12.8f'  % ( 2*f,  0.0,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0, -2*f,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,  2*f,  0.0),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0, -2*f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,  0.0,  2*f),
+            '%12.8f %12.8f %12.8f'  % (  -f,   -f,  0.0),
+            '%12.8f %12.8f %12.8f'  % (   f,   -f,  0.0),
+            '%12.8f %12.8f %12.8f'  % (  -f,    f,  0.0),
+            '%12.8f %12.8f %12.8f'  % (   f,    f,  0.0),
+            '%12.8f %12.8f %12.8f'  % (  -f,  0.0,   -f),
+            '%12.8f %12.8f %12.8f'  % (   f,  0.0,   -f),
+            '%12.8f %12.8f %12.8f'  % (  -f,  0.0,    f),
+            '%12.8f %12.8f %12.8f'  % (   f,  0.0,    f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,   -f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,    f,   -f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,   -f,    f),
+            '%12.8f %12.8f %12.8f'  % ( 0.0,    f,    f)]
 
     field=fields[i]
     
@@ -2320,14 +2320,14 @@ def Fi(i,bi):
     '''Select diagonal field.'''
     Fi = [0,0,0]
     Fi[i] = bi
-    return tuple(around(Fi,decimals=6))
+    return tuple(around(Fi,decimals=8))
 
 def Fij(i,j,bi,bj):
     '''Select off-diagonal field.'''
     Fij = [0,0,0]
     Fij[i] = bi
     Fij[j] = bj
-    return tuple(around(Fij,decimals=6))
+    return tuple(around(Fij,decimals=8))
 
 def Mu_E(i,E,f):
     '''Components of dipole moment (energy expansion).'''
