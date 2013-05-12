@@ -531,7 +531,7 @@ class GAMESS_INPUTS(INPUTS):
  $ccinp  iconv=14 maxcc=100 $end
  $trans  cuttrf=1d-15 $end
  $scf    dirscf=.t. fdiff=.f. diis=.t. soscf=.f.
-         conv=1d-11 swdiis=0.0001 $end
+         conv=1d-11 swdiis=0.0001 npreo(1)=1,-1,2,1 $end
  $basis  gbasis=sto ngauss=3 $end
 @data
 """
@@ -1016,6 +1016,9 @@ thrs     = 1.0e-15, 1.0e-06, 1.0e-06
         except ValueError:
             print "Problem with *.xyz file?"
             sys.exit(1)
+        except IndexError:
+            print "Empty *.xyz file - assuming old molcas syntax"
+            xyz=''
 
         return xyz
 
@@ -1260,36 +1263,52 @@ class GAUSSIAN(PARSER):
             #os.environ['g09root']='/opt/gaussian'
             formchk = os.environ['g09root']+'/g09/formchk'
 
+        chkfiles=[]
+        fchkfiles=[]
         logfiles=[]
+
         for f in os.listdir(self.logpath):
             if re.search("\.chk", f):
-                logfiles.append(self.logpath+'/'+f)
-        logfiles.sort()
+                chkfiles.append(self.logpath+'/'+f)
+            if re.search("\.fchk", f):
+                fchkfiles.append(self.logpath+'/'+f)
 
-        for chk in logfiles:
-            # prepare formated checkpoints
-            fchk = chk.replace('chk','fchk')
-            if not os.path.exists(fchk):
-                try:
-                    print "Using %s to format checkpoints" % (formchk)
-                    Run(formchk, chk+' '+fchk)
-                except UnboundLocalError:
-                    msg  = '''Counldn't find a valid formchk executable\n'''
-                    msg += '''Please: a) set $g09root variable, or\n'''
-                    msg += '''        b) put a copy of formchk.long executable in the same path as this script, or\n'''
-                    msg += '''        c) prepare the formatted checkpoints by hand'''
-                    print msg
-                    sys.exit(4)
+        if chkfiles:
 
-            # parse current logfile
-            self.ParseFile(fchk)
+            chkfiles.sort()
+        
+            for chk in chkfiles:
+                # prepare formated checkpoints
+                fchk = chk.replace('chk','fchk')
+                logfiles.append(self.logpath+'/'+fchk)
+
+                if not os.path.exists(fchk):
+                    try:
+                        #print "Using %s to format checkpoints" % (formchk)
+                        Run(formchk, chk+' '+fchk)
+                    except UnboundLocalError:
+                        msg  = '''Counldn't find a valid formchk executable\n'''
+                        msg += '''Please: a) set $g09root variable, or\n'''
+                        msg += '''        b) put a copy of formchk.long executable in the same path as this script, or\n'''
+                        msg += '''        c) prepare the formatted checkpoints by hand'''
+                        print msg
+                        sys.exit(4)
+            
+                # parse current logfile
+                self.ParseFile(fchk)
+        else:
+            fchkfiles.sort()
+            for fchk in fchkfiles:
+                # parse current logfile
+                logfiles.append(self.logpath+'/'+fchk)
+                self.ParseFile(fchk)
+
 
         if self.density == 1:
 
-            for chk in logfiles:
+            for fchk in logfiles:
 
                 # ... read applied external field ...
-                fchk = chk.replace('chk','fchk')
                 if os.path.exists(fchk):
                     log=open(fchk)
                     line = FindLine(log,'External E-field')
@@ -1297,11 +1316,11 @@ class GAUSSIAN(PARSER):
                     field = tuple(self.sign*around(array(line[1:4],dtype=float64), decimals=8))
 
                 # parse current cube file
-                cubefile = chk.replace('chk','cube')
+                cubefile = fchk.replace('fchk','cube')
                 if os.path.exists(cubefile):
                     t = CUBE(cubefile)
                     self.densities[field]=t.data
-                    #t.writeCubeFile(chk.replace('chk','cube2'))
+                    #t.writeCubeFile(fchk.replace('fchk','cube2')) # for testing
                 if field == (0,0,0):
                     t.data = None
                     self.cubedata=t
