@@ -30,3 +30,4 @@ The usage of the script itself is rather self-explanatory, however, I have prepa
 1. Kurtz, H. A.; Dudis, D. S. In Reviews in Computational Chemistry; Lipkowitz, K. B., Boyd, D. B., Eds.; Wiley: New York, 2007; pp 241-279
 2. Medved, M.; Stachová, M.; Jacquemin, D.; André, J.; Perpète, E. A.; J. Mol. Struct. THEOCHEM, 2007, vol. 847, pp 39-46
 3. Góra, R. W.; Zaleśny, R.; Zawada, A.; Bartkowiak, W.; Skwara, B.; Papadopoulos, M. G.; Silva, D. L. J. Phys. Chem. A, 2011, 115, 4691-4700
+4. Góra, R. W. and Błasiak B. J. Phys. Chem. A, 2013, 117, 6859-6866
