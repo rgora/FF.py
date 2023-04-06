@@ -17,7 +17,7 @@ FF.py is freely available for download from our git repository under the terms o
 
 ## Support ##
 
-Please contact the author [mailto:robert.gora@pwr.edu.pl Robert Góra].
+Please contact the author [Robert W. Góra](mailto:robert.gora@pwr.edu.pl).
 
 ## Tutorials & References ##
 
