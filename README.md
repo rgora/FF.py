@@ -23,7 +23,7 @@ Please contact the author [Robert W. Góra](mailto:robert.gora@pwr.edu.pl).
 
 For the details of finite field approach I can recommend a review by Kurtz and Dudis [1], whereas the details of the iterative Generalized Romberg differentiation procedure can be found in the paper by Medved et al. [2]. This script has been used also in our recent papers [3,4].
 
-The usage of the script itself is rather self-explanatory, however, I have prepared a short tutorial which is available through project's wiki.
+The usage of the script itself is rather self-explanatory, however, I have prepared a short [Tutorial](https://github.com/rgora/FF.py/wiki/tutorial) which is available through project's wiki.
 
 ## References ##
 
